@@ -1,0 +1,33 @@
+# 项目级覆盖，其余规则沿用 detekt 默认（buildUponDefaultConfig = true）
+build:
+  maxIssues: 0
+
+naming:
+  FunctionNaming:
+    ignoreAnnotated:
+      - 'Composable'
+
+complexity:
+  LongMethod:
+    active: true
+    threshold: 40
+  LongParameterList:
+    functionThreshold: 8
+    ignoreAnnotated:
+      - 'Composable'
+  TooManyFunctions:
+    # 服务/屏幕文件按职责拆小函数后自然偏多，放行到 12
+    thresholdInClasses: 12
+
+style:
+  MaxLineLength:
+    active: true
+    maxLineLength: 100
+  MagicNumber:
+    # Compose UI 字面量（dp/颜色）与坐标转换算法常量天然大量出现，关闭此规则
+    active: false
+
+empty-blocks:
+  EmptyFunctionBlock:
+    # 监听器接口的空覆盖属惯用桩实现（如 Baidu 状态回调）
+    ignoreOverridden: true
