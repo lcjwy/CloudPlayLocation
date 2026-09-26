@@ -1,0 +1,23 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# detektReports 由构建产物，忽略各模块 build 已覆盖；补充 IDE
+.idea/
+*.iml
+
+# 模块构建产物与会话文件
+**/build/
+.zcode/
