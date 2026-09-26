@@ -1,0 +1,189 @@
+# 虚拟定位 App 需求文档
+
+> 项目：`E:\Code\DemoCode\Android\Location`（包名 `com.chan.location`）
+> 示例项目（移植来源）：`E:\Code\fromGit\android\Gogogo`
+> 本文档为唯一需求基准，配套 `doc/ARCHITECTURE.md`（架构与核心逻辑）。实施前请通读两份文档。
+
+## 1. 项目背景与目标
+
+基于 Gogogo 的成熟实现（百度地图 + Android 原生 Mock Location，免 Root、无 Xposed），在空白 Compose 项目上构建**地图选点式虚拟定位工具**：
+
+- 移植：百度 SDK 集成方式、TestProvider 注入逻辑（Java → Kotlin 重写）、坐标系转换、前台服务模式。
+- 新增：双地图源（百度 + osmdroid）、历史/收藏、主页开关、单按钮悬浮窗、设置页、隐私政策流程。
+
+**技术底座**：AGP 9.0.1 / Gradle 9.2.1 / Kotlin 2.0.21 / JDK 21 / Compose Material3 / minSdk 26 / targetSdk 36。仅中文（`values` 默认即中文，不做多语言）。
+
+## 2. 坐标系约定（全局规则）
+
+| 场景 | 坐标系 |
+|---|---|
+| 内部存储（Room/DataStore） | WGS84（真实 GPS 坐标） |
+| 注入 TestProvider | WGS84 |
+| 百度地图显示/相机 | BD09LL（经 `CoordUtils` 转换） |
+| osmdroid 显示/相机 | WGS84（直接使用） |
+| 经纬度输入弹窗 | 用户可选，默认 WGS84，可选 BD09（BD09 输入先转 WGS84 再入内部流程） |
+
+默认视角（无上次选点时）：北京中心 `39.908722, 116.397499`（WGS84）。
+
+## 3. 功能需求
+
+### 3.1 主页（启动页，不直接进地图）
+- 顶部"当前选中位置"卡片：显示名称 + 经纬度；右侧总开关控制虚拟位置启停；未选点时显示引导文案。
+- 顶部 Tab「历史 | 收藏」：
+  - 历史列表按 `lastUsedAt` 倒序；收藏列表为 `isFavorite = true` 过滤。
+  - 列表项：名称、坐标（保留 6 位小数）、时间。
+  - **点击项 = 设为当前选中点并立即启用虚拟位置**（更新 `lastUsedAt`）。
+  - 项上操作：收藏星标切换、删除（滑动或菜单均可）。
+- 空态（列表为空）：文案"暂无记录" + 「添加点位」按钮。
+  - 点击按钮先做权限检查（见 3.4），全部通过后跳地图选点页。
+- 开关/点击项启用前的校验链见 3.4；校验失败弹引导弹窗，不崩溃、不静默失败。
+
+### 3.2 地图选点页
+- 地图：显示、拖动平移、双指缩放、双击放大、加减号缩放按钮。
+- **屏幕中心固定十字准星**（Compose 覆盖层实现，两地图源共用），拖动地图即改变选点，底部实时显示中心点坐标（WGS84）。
+- 「经纬度输入」按钮 → 弹窗：
+  - 纬度/经度两个输入框，校验范围 ±90 / ±180，非法输入提示。
+  - 坐标系选择：WGS84（默认）/ BD09。
+  - 确定后相机动画移动到目标点，用户可继续拖动微调。
+- 「锁定虚拟位置」按钮：确认弹窗后，将当前中心点设为选中点并启动虚拟位置服务。
+- 「保存」「收藏」按钮：各自弹确认框，可编辑名称（默认名 = 系统 `Geocoder` 反查地址，失败则"纬度,经度"）。**用户不确认不算记录，不落库**。
+- 返回退出（BackHandler）：若存在未保存的已选点 → 弹窗四选一「保存到历史 / 保存并收藏 / 不保存 / 取消」；无未保存选点直接退出。
+- 地图源由设置决定，两源 UI 交互完全一致（差异封装在 MapAdapter 内）。
+
+### 3.3 设置页（DataStore 持久化，修改即生效，不弹确认窗）
+- **地图源**：百度 / osmdroid 单选，默认百度。未同意隐私政策时选百度 → 提示需先同意隐私政策。
+- **注入频率**：10ms–100ms，步进 10ms 的离散刻度 Slider（默认 100ms）。说明文案："间隔越小定位越新鲜，但越耗电"。
+- **悬浮窗开关**：开启时检查 `Settings.canDrawOverlays()`，未授权 → 引导跳 `ACTION_MANAGE_OVERLAY_PERMISSION`；关闭则移除悬浮窗并停止悬浮窗服务。
+- **WiFi 闪回防护**：显示当前 WLAN / 系统「Wi-Fi 扫描」开关状态（回页面自动刷新），说明闪回原理并引导关闭系统扫描类开关：跳转 `android.settings.LOCATION_SCANNING_SETTINGS`（隐藏 action，机型不支持则回落到 `ACTION_LOCATION_SOURCE_SETTINGS`）。**无需断开 WiFi 联网**。
+- **隐私政策**：查看全文（本地内置文案）+ 重新选择同意/不同意。
+- **开发者选项**：跳转 `Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS`。
+- **关于**：版本号、坐标系说明。
+
+### 3.4 权限流程（最小化声明）
+**运行时申请**（主页「添加」或开总开关时，一次性申请）：
+- `ACCESS_FINE_LOCATION` + `ACCESS_COARSE_LOCATION`（Android 12+ 需同时声明，适配精确/模糊选择）。
+- `POST_NOTIFICATIONS`（Android 13+，前台服务通知可见性）。
+
+**静态声明清单**（全部与功能直接相关，不得多引）：
+```
+ACCESS_FINE_LOCATION / ACCESS_COARSE_LOCATION / POST_NOTIFICATIONS /
+INTERNET / FOREGROUND_SERVICE / FOREGROUND_SERVICE_LOCATION /
+FOREGROUND_SERVICE_SPECIAL_USE / SYSTEM_ALERT_WINDOW
+```
+- 明确**不引入** Gogogo 中的 `READ_PHONE_STATE`、`READ_EXTERNAL_STORAGE`、`REQUEST_INSTALL_PACKAGES`、`ACCESS_MOCK_LOCATION`（系统权限，声明无效）等。
+- 构建后核对 merged manifest；osmdroid AAR 合入的多余权限用 `tools:node="remove"` 剔除。
+
+**启用虚拟位置前的校验链**（按序，任一失败弹引导弹窗）：
+1. 位置权限已授予（未授予 → 申请）。
+2. 本应用已被选为"模拟位置信息应用"：检测方式 = 试探性 `LocationManager.addTestProvider(GPS)` 成功即已授权（随后立即清理），`SecurityException` 则未授权 → 引导弹窗跳开发者设置页。
+3. GPS 开关已打开（`isProviderEnabled`）→ 未开跳 `ACTION_LOCATION_SOURCE_SETTINGS`。
+4. （仅悬浮窗开启时）overlay 权限 → 跳 `ACTION_MANAGE_OVERLAY_PERMISSION`。
+5. **WiFi 提醒（软提醒，不阻断）**：WLAN 开启时系统可能基于 WiFi 扫描算出真实位置导致虚拟位置"闪回"。启动前检测 `WifiManager.isWifiEnabled`，开启则弹窗提示，可「去关闭」（跳 `ACTION_WIFI_SETTINGS`）或「仍要继续」。设置页另有常驻「WiFi 闪回防护」区块，引导关闭系统的「Wi-Fi 扫描」等扫描类开关（无需断开 WiFi）。
+
+### 3.5 虚拟位置服务（前台）
+- `MockLocationService`：前台服务，`foregroundServiceType="location"`。
+  - 注册 GPS + Network 双 TestProvider：API 31+ 用 `ProviderProperties`（GPS: POWER_USAGE_HIGH/ACCURACY_FINE；Network: POWER_USAGE_LOW/ACCURACY_COARSE），API 26–30 用 `Criteria` 重载。
+  - HandlerThread 循环按**设置频率（10–100ms，默认 100ms）**依次调用 `setTestProviderLocation`（GPS 与 Network 各一次）。
+  - Location 字段：accuracy、altitude（默认 55.0）、bearing、speed、`System.currentTimeMillis()`、`elapsedRealtimeNanos()`、extras（`satellites=7`）。
+  - 通知：显示当前坐标，点击回 MainActivity；停止时 removeTestProvider 双 provider + stopForeground。
+- `FloatingControlService`：前台服务 `foregroundServiceType="specialUse"`，仅在悬浮窗开关开启时运行，持有悬浮按钮，最小化通知（静音渠道）。
+- 设备重启后**不自动恢复**虚拟位置（不引入开机广播权限）；主页保留选中点显示，开关置关。
+
+### 3.6 悬浮窗（单图标按钮）
+- 一个图标按钮，`TYPE_APPLICATION_OVERLAY`（flags: `FLAG_NOT_FOCUSABLE | FLAG_NOT_TOUCH_MODAL`），全局可拖动（rawX/rawY 差值 + `updateViewLayout`）。
+- **长按 ≥2 秒切换虚拟位置启/关**：长按期间按钮显示进度环（0–2s）；手指移动超过 `touchSlop` 判定为拖动并取消长按计时。
+
+### 3.7 数据存储
+- **Room**（KSP）`PointEntity`：
+  ```
+  id: Long (PK, 自增)
+  name: String
+  wgsLat / wgsLng: Double     // 主坐标，WGS84
+  bdLat / bdLng: Double       // 冗余存储，供百度侧直接用
+  isFavorite: Boolean
+  createdAt: Long             // 毫秒时间戳
+  lastUsedAt: Long
+  ```
+  - 保存时按 WGS84 坐标（4 位小数，约 11m 精度）去重：已存在则刷新 `lastUsedAt`（收藏操作只改 `isFavorite`，不新建条目）。
+- **DataStore Preferences**：地图源、注入频率、悬浮窗开关、隐私同意状态、当前选中点快照（冗余存坐标，防止 Room 条目被删）+ 启用状态标志。
+
+### 3.8 隐私政策与定位 SDK
+- 首次启动弹隐私政策（本地内置文案）：**同意** → 允许懒初始化百度 SDK（`SDKInitializer.setAgreePrivacy(true)` + `LocationClient.setAgreePrivacy(true)` + `SDKInitializer.initialize` + `setCoordType(BD09LL)`），地图可用百度源并显示真实位置蓝点 + 「回到当前位置」；**不同意** → 百度 SDK 完全不初始化（百度地图与百度定位均不可用，地图源强制 osmdroid），无真实定位，初始视角用默认城市中心。
+- 百度初始化必须**懒加载**（不能在 Application 无条件初始化）：同意后按 DataStore 持久化状态/当次选择初始化，且必须在首个百度 MapView 创建之前完成。
+- 任何时候：有上次选点 → 初始视角为上次选点；否则按上述隐私分支。
+
+## 4. 模块化架构（组件化）
+
+```
+:app                  壳：Application、MainActivity、NavHost、AppContainer(手写DI)、百度Key配置
+:core:common          坐标转换 CoordUtils、权限/系统设置跳转工具
+:core:data            Room + DataStore + Repository + 领域模型
+:core:ui              主题 + 通用组件（空态、确认弹窗、坐标文本）
+:map:api              MapAdapter 接口（WGS84 出入）、地图源枚举
+:map:baidu            百度实现（jar/so 放本模块 libs，内部做 BD09 转换）
+:map:osm              osmdroid 实现
+:service:mock         MockLocationService、FloatingControlService、悬浮窗视图、启停控制器
+:feature:home         主页
+:feature:map          地图选点页（仅依赖 :map:api，不依赖具体实现）
+:feature:settings     设置页
+build-logic           轻量 convention plugins（android-library / compose-feature）
+```
+
+- 依赖规则：feature 模块之间不互相依赖；`:feature:*` → `:core:*` + `:map:api`（home/settings 额外允许 → `:service:mock` 使用启停控制器）；`:app` 负责组装，把具体 `MapAdapter` 实现注入 `:feature:map`。
+- 手写 DI（AppContainer），不引入 Hilt；Room 使用 KSP（版本须匹配 Kotlin 2.0.21）。
+- 新增依赖：navigation-compose、lifecycle-runtime-compose/viewmodel-compose（顺带升级现有 2.6.1）、room(runtime/ktx/compiler)、kotlinx-coroutines-android、datastore-preferences、osmdroid-android（Maven Central，无需新增仓库）。
+- 百度 jar/so 复制到 `:map:baidu/libs`：`implementation files(...)` + `jniLibs.srcDirs`；`abiFilters "arm64-v8a"`（**仅 64 位，x86_64 模拟器请切 osmdroid 源**）；proguard：`-keep class com.baidu.** {*;}`。
+
+## 5. 百度 Key 配置与安全
+
+- Key 存 `local.properties`（键 `BAIDU_MAP_KEY`，已被 .gitignore 排除）→ 各构建读取后经 `:app` 的 `manifestPlaceholders` 注入 manifest `<meta-data com.baidu.lbsapi.API_KEY>`；源码与版本库零硬编码。
+- release 开启混淆。**文档如实说明：客户端无法绝对防逆向**，此方案防的是源码泄露与仓库泄露；如需更强保护后续可上 NDK 加固（不在本期范围）。
+- 占位 Key 期间（未申请）：百度瓦片不显示、定位不可用，属预期，代码逻辑可正常跑通；设置页切 osmdroid 可完整体验。
+- Key 申请（用户后续操作）：百度开放平台 → 创建应用 → 类型 Android SDK → 填新包名 `com.chan.location` + 调试/发布 SHA1。
+
+## 6. 移植清单（Gogogo → 新项目）
+
+| 来源（`E:\Code\fromGit\android\Gogogo\app\src\main\...`） | 去向 | 说明 |
+|---|---|---|
+| `libs/BaiduLBS_Android.jar` + `libs/arm64-v8a/*.so` | `:map:baidu/libs` | SDK 本体，原样复制 |
+| `java/com/zcshou/utils/MapUtils.java` | `:core:common` CoordUtils.kt | 全部转换函数：bd2wgs/wgs2bd09/bd09togcj02/gcj02towgs84，纯数学移植 |
+| `java/com/zcshou/service/ServiceGo.java` | `:service:mock` MockLocationService.kt | TestProvider 注册、循环注入、Location 字段填充、前台通知；频率改为读设置 |
+| `java/com/zcshou/utils/GoUtils.java` | `:core:common` 权限工具 | `isAllowMockLocation`（试探法）、各类系统设置跳转 |
+| `java/com/zcshou/gogogo/GoApplication.java` | 参考 | 百度隐私 + 初始化顺序（改为懒加载） |
+| `java/com/zcshou/gogogo/MainActivity.java` 的 `startGoLocation/doGoLocation` | 参考 | 启停时序、校验链顺序 |
+| `java/com/zcshou/joystick/JoyStick.java` 的窗口管理部分 | 参考 | WindowManager 参数、拖动实现（按钮与长按逻辑为全新实现） |
+
+## 7. 实施顺序
+
+1. 建 `doc/`（本文档与 ARCHITECTURE.md）。
+2. 搭 `build-logic` + 全部空模块与依赖关系，`:app` 可编译。
+3. Gradle 细节：新增依赖、百度 jar/so、abiFilters、proguard、app_name 改「虚拟定位」。
+4. Manifest：最小权限、两个 service、百度 meta-data（占位 Key）与 `com.baidu.location.f` 声明。
+5. `:core:common` → `:core:data` → `:core:ui`。
+6. `:service:mock`（注入服务、悬浮窗、启停控制器）。
+7. `:map:api` / `:map:baidu` / `:map:osm` / `:feature:map`。
+8. `:feature:home`、`:feature:settings`、首启隐私弹窗（`:app` 组装）。
+9. `gradlew assembleDebug` 全模块通过 + merged manifest 权限核对。
+10. 补全 `doc/ARCHITECTURE.md` 的「模块归纳」章节。
+
+## 8. 验收清单
+
+- [ ] 首启隐私弹窗：同意 → 百度源可用 + 真实位置蓝点；不同意 → 强制 osmdroid + 默认北京视角。
+- [ ] 主页：空态文案与「添加点位」按钮；两个 Tab 列表；点击项立即启用；星标/删除可用。
+- [ ] 权限链：拒位置权限可再申请；模拟位置应用未选 → 弹窗跳开发者设置；GPS 未开 → 跳位置设置。
+- [ ] 地图页：拖动十字选点、缩放、经纬度输入跳转（含非法输入校验、坐标系选择）、锁定、保存/收藏确认、退出四选一弹窗；不确认不落库。
+- [ ] 服务：开关 ON 出现前台通知（显示坐标）；设置页频率 10–100ms 步进 10 生效（改后无需重启服务，下次注入即用新值或重启注入循环）。
+- [ ] 悬浮窗：全局拖动；长按 2s 进度环后启/关；拖动不误触长按。
+- [ ] 坐标准确性：地图锁定某明显地标，用其他地图 App 对比无偏移（验证 WGS84/BD09 转换）。
+- [ ] 权限核对：merged manifest 无 `READ_PHONE_STATE` 等无关权限。
+- [ ] `gradlew assembleDebug` 全部模块编译通过；仅中文文案。
+
+## 9. 风险与边界
+
+| 风险 | 说明与对策 |
+|---|---|
+| 百度 Key 未配置 | 瓦片空白/定位失败属预期；逻辑可跑通；申请后填 `local.properties` 即生效 |
+| 百度 so 仅 arm64-v8a | x86_64 模拟器上百度源不可用，切 osmdroid；真机基本均为 arm64 |
+| targetSdk 34+ FGS 限制 | location 型前台服务启动前必须已授予位置权限，校验链已覆盖 |
+| 注入频率过低（10ms） | 高频循环耗电增加；默认 100ms，UI 有说明文案 |
+| 重启不恢复 | 不引入开机广播（权限最小化），重启后开关置关，选中点保留 |
