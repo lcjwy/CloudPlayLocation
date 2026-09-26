@@ -24,7 +24,8 @@
 ```
 
 - feature 之间互不依赖；`:feature:map` 只依赖 `:map:api`；`:map:baidu`/`:map:osm` 只被 `:app` 依赖。
-- 手写 DI：`AppContainer`（:app），无 Hilt；Room 用 KSP。
+- Koin DI：模块定义只在 `:app`（`di/AppModule.kt`），core/feature 保持框架无关；Room 用 KSP。
+- 静态检查：ktlint（行宽 100，`.editorconfig`）+ detekt（函数 ≤40 语句，`config/detekt/detekt.yml`），root `build.gradle.kts` 统一应用到全模块。
 
 ## 2. 核心逻辑
 
@@ -76,7 +77,8 @@ MapAdapterFactory: (context, MapConfig) -> MapAdapter，由 :app 提供实现选
 
 ### 2.6 状态管理与 DI
 - `MockLocationManager`（:service:mock 进程级单例）：以 `(悬浮窗开关, 运行开关, 注入频率)` 的 DataStore 组合流为唯一事实源，`reconcileOnChange` collect 后统一启停 MockLocationService/FloatingControlService；进程重启校正残留 mockEnabled。UI 与悬浮窗只调 `start(point)`/`stop()`/`tryToggleFromOverlay()`。
-- `AppContainer`（:app）：settingsRepository / pointRepository / mapAdapterFactory 三个 lazy 单例；MainActivity 读取隐私状态，null 时显示 PrivacyDialog。
+- Koin（4.x，仅 :app 触碰）：`di/AppModule.kt` 注册 SettingsRepository / PointRepository / MapAdapterFactory 三个单例；`LocationApplication.startKoin` 后经 `MockLocationManager.init(this, get())` 交接；MainActivity 用 `by inject()` 注入后以参数下传，feature 层保持无框架依赖。
+- 启停校验链 UI 下沉为 `:core:ui` 的 `MockStartGate`（`rememberMockStartGate`）：主页与地图页共用「权限申请 → 模拟位置/GPS/悬浮窗引导弹窗 → WiFi 提醒」全流程，消除重复。
 
 ### 2.7 百度 Key 注入链
 ```
@@ -90,10 +92,10 @@ local.properties(BAIDU_MAP_KEY, 不入库) → :app build.gradle 读取 → mani
 
 | 模块 | 职责 | 关键类（对外接口） | 依赖 |
 |---|---|---|---|
-| `:app` | 壳：导航、隐私弹窗、DI 组装、Key 注入 | `MainActivity`（NavHost: home/map/settings）、`LocationApplication`、`AppContainer`（settingsRepository/pointRepository/mapAdapterFactory）、`ui/PrivacyDialog` | 全部模块 |
+| `:app` | 壳：导航、隐私弹窗、Koin 模块装配、Key 注入 | `MainActivity`（NavHost: home/map/settings）、`LocationApplication`（startKoin）、`di/AppModule`（Repository/MapAdapterFactory 单例）、`ui/PrivacyDialog` | 全部模块, Koin |
 | `:core:common` | 无 Android UI 的纯基础：坐标转换、权限校验、系统跳转 | `GeoLatLng`、`MapSource`(枚举)、`CoordUtils`、`MockLocationAccess.isGranted`、`MockCheck`(validate/hasLocationPermission/isWifiEnabled/isWifiScanAlwaysAvailable)、`MockCheckError`、`SystemIntents`(start 支持回落页) | 无 |
 | `:core:data` | 持久化与领域模型 | `SettingsRepository`（mapSource/intervalMs/floatingEnabled/privacyAgreed/mockEnabled/selectedPoint + setters）、`PointRepository`(history/favorites/saveHistory/saveFavorite/setFavorite/delete/touch)、`buildPointRepository(context)`、`SavedPoint`/`SelectedPoint`、`local/`(PointEntity/PointDao/AppDatabase) | :core:common |
-| `:core:ui` | 主题与通用组件 | `theme/LocationTheme`、`EmptyState`、`ConfirmDialog`、`PrivacyPolicyText`（隐私全文，:app 与 settings 共用） | Compose BOM |
+| `:core:ui` | 主题与通用组件 | `theme/LocationTheme`、`EmptyState`、`ConfirmDialog`、`MockStartFlow`（`MockStartGate`/`rememberMockStartGate`/`JumpGuideDialog`/`WifiWarnDialog`/`jumpDialogFor`）、`OnResumeEffect`、`PrivacyPolicyText` | :core:common, Compose BOM |
 | `:map:api` | 地图抽象（WGS84 契约） | `MapAdapter`、`MapConfig`、`MapAdapterFactory` | :core:common |
 | `:map:baidu` | 百度实现 + SDK 载体（libs/ 内 jar+so，仅 arm64-v8a） | `BaiduSdkInitializer.ensureInit`、`BaiduMapAdapter`（内部 BD09 转换、LocationClient 蓝点） | :map:api, :core:common, BaiduLBS jar |
 | `:map:osm` | osmdroid 实现（Maven 依赖，无 Key） | `OsmMapAdapter`（WGS84 直通、120ms 防抖、私有目录缓存） | :map:api, :core:common, osmdroid-android |
@@ -112,6 +114,7 @@ local.properties(BAIDU_MAP_KEY, 不入库) → :app build.gradle 读取 → mani
 - **模块签名泄漏**：DataStore `edit{}` 返回 `Preferences`，Repository setter 必须写成块体返回 Unit，否则下游模块被迫依赖 datastore。
 - DataStore 属性委托 `preferencesDataStore` 是单例约束：同文件同进程只能有一份（SettingsRepository 持 context 单例使用）。
 - `gradle-daemon-jvm.properties` 固定 JDK 21 工具链（foojay 解析）。
+- **detekt/ktlint 接入**：detekt 1.23.8 在 Gradle 9.2.1 可用（2.0 尚为 alpha）；`@Composable` 命名需 `.editorconfig` 设 `ktlint_function_naming_ignore_when_annotated_with = Composable`；`EmptyFunctionBlock` 属 `empty-blocks` 规则集（非 style）；MagicNumber 对 Compose UI 字面量是噪音，已关闭。
 
 ## 5. 待办与已知边界
 
