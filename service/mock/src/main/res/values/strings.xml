@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="mock_notification_channel">虚拟定位服务</string>
+    <string name="mock_notification_title">虚拟定位运行中</string>
+    <string name="mock_no_permission">未获得模拟位置权限，请先在开发者选项中选择本应用</string>
+    <string name="float_notification_channel">悬浮窗控制</string>
+    <string name="float_notification_title">悬浮按钮已开启</string>
+    <string name="float_notification_text">长按按钮 2 秒切换虚拟位置</string>
+</resources>

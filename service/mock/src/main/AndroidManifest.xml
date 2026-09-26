@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <service
+                android:name=".MockLocationService"
+                android:exported="false"
+                android:foregroundServiceType="location" />
+        <service
+                android:name=".FloatingControlService"
+                android:exported="false"
+                android:foregroundServiceType="specialUse">
+            <property
+                    android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                    android:value="floating_button_for_virtual_location" />
+        </service>
+    </application>
+
+</manifest>
