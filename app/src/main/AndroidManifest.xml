@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+        xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- 位置：地图"我的位置"蓝点 + location 型前台服务启动要求 -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Android 13+ 前台服务通知可见性 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 地图瓦片 / 反地理编码 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- 前台服务：location=注入服务，specialUse=悬浮按钮服务 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- 悬浮按钮（特殊权限，运行时引导用户跳系统页授权） -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!-- 剔除依赖库合入的无关权限 -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" tools:node="remove" />
+
+    <application
+            android:name=".LocationApplication"
+            android:allowBackup="true"
+            android:dataExtractionRules="@xml/data_extraction_rules"
+            android:fullBackupContent="@xml/backup_rules"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:supportsRtl="true"
+            android:theme="@style/Theme.Location">
+        <activity
+                android:exported="true"
+                android:label="@string/app_name"
+                android:name=".MainActivity"
+                android:theme="@style/Theme.Location">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- 百度地图 Key：local.properties(BAIDU_MAP_KEY) 经 manifestPlaceholders 注入 -->
+        <meta-data
+                android:name="com.baidu.lbsapi.API_KEY"
+                android:value="${baiduMapKey}" />
+        <!-- 百度定位 SDK 所需服务（真实位置蓝点） -->
+        <service
+                android:name="com.baidu.location.f"
+                android:exported="false"
+                android:process=":remote" />
+    </application>
+
+</manifest>
