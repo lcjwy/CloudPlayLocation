@@ -6,7 +6,6 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.location.Criteria
 import android.location.Location
 import android.location.LocationManager
 import android.location.provider.ProviderProperties
@@ -19,6 +18,7 @@ import android.os.Process
 import android.os.SystemClock
 import android.widget.Toast
 import androidx.core.app.NotificationManagerCompat
+import com.chan.location.core.data.model.SelectedPoint
 import java.util.Locale
 
 /**
@@ -197,12 +197,12 @@ class MockLocationService : Service() {
     }
 
     companion object {
-        const val EXTRA_LAT = "extra_lat"
-        const val EXTRA_LNG = "extra_lng"
-        const val EXTRA_INTERVAL = "extra_interval"
-        const val MIN_INTERVAL_MS = 10
-        const val MAX_INTERVAL_MS = 100
-        const val DEFAULT_INTERVAL_MS = 100
+        private const val EXTRA_LAT = "extra_lat"
+        private const val EXTRA_LNG = "extra_lng"
+        private const val EXTRA_INTERVAL = "extra_interval"
+        private const val MIN_INTERVAL_MS = 10
+        private const val MAX_INTERVAL_MS = 100
+        private const val DEFAULT_INTERVAL_MS = 100
 
         private const val CHANNEL_ID = "mock_location"
         private const val NOTIFICATION_ID = 1
@@ -217,7 +217,7 @@ class MockLocationService : Service() {
 
         fun intent(
             context: Context,
-            point: com.chan.location.core.data.model.SelectedPoint?,
+            point: SelectedPoint?,
             intervalMs: Int,
         ): Intent =
             Intent(context, MockLocationService::class.java)
@@ -277,6 +277,7 @@ private class TestProviders(
     }
 
     private fun addLegacy() {
+        // minSdk 26：26–30 只有 Criteria 重载可用
         @Suppress("DEPRECATION")
         lm.addTestProvider(
             LocationManager.GPS_PROVIDER,
@@ -287,8 +288,8 @@ private class TestProviders(
             true,
             true,
             false,
-            Criteria.POWER_HIGH,
-            Criteria.ACCURACY_FINE,
+            android.location.Criteria.POWER_HIGH,
+            android.location.Criteria.ACCURACY_FINE,
         )
         @Suppress("DEPRECATION")
         lm.addTestProvider(
@@ -300,8 +301,8 @@ private class TestProviders(
             false,
             false,
             false,
-            Criteria.POWER_LOW,
-            Criteria.ACCURACY_COARSE,
+            android.location.Criteria.POWER_LOW,
+            android.location.Criteria.ACCURACY_COARSE,
         )
     }
 }

@@ -155,8 +155,8 @@ class FloatingButtonView(
     }
 
     companion object {
-        const val BUTTON_SIZE_DP = 56f
-        const val LONG_PRESS_MS = 2000L
+        private const val BUTTON_SIZE_DP = 56f
+        private const val LONG_PRESS_MS = 2000L
         private const val TICK_MS = 33L
     }
 }
