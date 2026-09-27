@@ -22,6 +22,4 @@ dependencies {
     api(libs.androidx.compose.material3)
     api(libs.androidx.activity.compose)
     api(libs.androidx.lifecycle.runtime.compose)
-    api(libs.androidx.compose.ui.tooling.preview)
-    debugImplementation(libs.androidx.compose.ui.tooling)
 }

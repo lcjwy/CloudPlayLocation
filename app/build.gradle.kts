@@ -70,7 +70,4 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(platform(libs.koin.bom))
     implementation(libs.koin.android)
-
-    testImplementation(libs.junit)
-    debugImplementation(libs.androidx.compose.ui.tooling)
 }
