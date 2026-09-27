@@ -1,5 +1,6 @@
 package com.chan.location.core.data
 
+import android.content.Context
 import com.chan.location.core.common.CoordUtils
 import com.chan.location.core.common.GeoLatLng
 import com.chan.location.core.data.local.AppDatabase
@@ -80,5 +81,5 @@ class PointRepository(
 }
 
 /** 组装入口：上层只依赖 PointRepository，不感知 Room 类型 */
-fun buildPointRepository(context: android.content.Context): PointRepository =
+fun buildPointRepository(context: Context): PointRepository =
     PointRepository(AppDatabase.build(context).pointDao())

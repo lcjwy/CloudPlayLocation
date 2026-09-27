@@ -27,7 +27,7 @@ private val LightColorScheme =
 @Composable
 fun LocationTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
+    // Android 12+ 支持动态取色
     dynamicColor: Boolean = true,
     content: @Composable () -> Unit,
 ) {
