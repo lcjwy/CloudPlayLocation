@@ -30,6 +30,7 @@ import com.chan.location.core.common.MapSource
 import com.chan.location.core.common.SystemIntents
 import com.chan.location.core.data.SettingsRepository
 import com.chan.location.core.ui.component.OnResumeEffect
+import com.chan.location.core.ui.component.PrivacyPolicyDialog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 

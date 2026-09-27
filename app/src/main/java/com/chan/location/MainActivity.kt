@@ -16,12 +16,12 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.chan.location.core.data.PointRepository
 import com.chan.location.core.data.SettingsRepository
+import com.chan.location.core.ui.component.PrivacyPolicyDialog
 import com.chan.location.core.ui.theme.LocationTheme
 import com.chan.location.feature.home.HomeScreen
 import com.chan.location.feature.map.MapScreen
 import com.chan.location.feature.settings.SettingsScreen
 import com.chan.location.map.api.MapAdapterFactory
-import com.chan.location.ui.PrivacyDialog
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
 
@@ -62,9 +62,10 @@ private fun AppRoot(
     val privacy by settings.privacyAgreed.collectAsStateWithLifecycle(initialValue = true)
 
     if (privacy == null) {
-        PrivacyDialog(
+        PrivacyPolicyDialog(
             onAgree = { scope.launch { settings.setPrivacyAgreed(true) } },
             onDecline = { scope.launch { settings.setPrivacyAgreed(false) } },
+            onDismiss = null,
         )
         return
     }

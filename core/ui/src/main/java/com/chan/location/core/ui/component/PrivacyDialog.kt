@@ -1,8 +1,7 @@
-package com.chan.location.ui
+package com.chan.location.core.ui.component
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -12,16 +11,16 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.chan.location.core.ui.component.PrivacyPolicyText
 
-/** 首启隐私弹窗：不同意则不初始化百度 SDK（地图强制开源源） */
+/** 隐私政策全文弹窗：首启与设置页复查共用；onDismiss 传 null 表示不可点外部关闭 */
 @Composable
-fun PrivacyDialog(
+fun PrivacyPolicyDialog(
     onAgree: () -> Unit,
     onDecline: () -> Unit,
+    onDismiss: (() -> Unit)?,
 ) {
     AlertDialog(
-        onDismissRequest = {},
+        onDismissRequest = { onDismiss?.invoke() },
         title = { Text("隐私政策") },
         text = {
             Column(
@@ -33,10 +32,6 @@ fun PrivacyDialog(
             }
         },
         confirmButton = { TextButton(onClick = onAgree) { Text("同意") } },
-        dismissButton = {
-            TextButton(onClick = onDecline, modifier = Modifier.padding(start = 8.dp)) {
-                Text("不同意")
-            }
-        },
+        dismissButton = { TextButton(onClick = onDecline) { Text("不同意") } },
     )
 }
