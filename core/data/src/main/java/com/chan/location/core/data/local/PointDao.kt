@@ -14,6 +14,9 @@ interface PointDao {
     @Query("SELECT * FROM points WHERE isFavorite = 1 ORDER BY lastUsedAt DESC")
     fun favorites(): Flow<List<PointEntity>>
 
+    @Query("SELECT * FROM points WHERE id = :id")
+    suspend fun byId(id: Long): PointEntity?
+
     @Query(
         "SELECT * FROM points WHERE wgsLat BETWEEN :minLat AND :maxLat " +
             "AND wgsLng BETWEEN :minLng AND :maxLng LIMIT 1",

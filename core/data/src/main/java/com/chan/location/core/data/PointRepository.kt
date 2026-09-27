@@ -18,6 +18,9 @@ class PointRepository(
 
     fun favorites(): Flow<List<SavedPoint>> = dao.favorites().map { it.map(::toDomain) }
 
+    /** 按 id 查点（主页条目定位跳转用）；已被删除时返回 null */
+    suspend fun byId(id: Long): SavedPoint? = dao.byId(id)?.let(::toDomain)
+
     /** 保存到历史：同位置（约 11m 内）只刷新原条目 */
     suspend fun saveHistory(
         name: String,
