@@ -46,6 +46,9 @@ private object Routes {
     const val MAP = "map?pid={pid}"
     const val SETTINGS = "settings"
 
+    /** 打开地图（不带定位点）；带占位符的 MAP 不可直接用于 navigate */
+    const val MAP_PLAIN = "map"
+
     /** 携带点位 id 打开地图：定位到该点并确认是否启用 */
     fun mapWithPoint(pid: Long): String = "map?pid=$pid"
 }
@@ -86,7 +89,7 @@ private fun AppNavHost(
             HomeScreen(
                 pointRepository = points,
                 settingsRepository = settings,
-                onAddPoint = { navController.navigate(Routes.MAP) },
+                onAddPoint = { navController.navigate(Routes.MAP_PLAIN) },
                 onLocateOnMap = { navController.navigate(Routes.mapWithPoint(it.id)) },
                 onOpenSettings = { navController.navigate(Routes.SETTINGS) },
             )
