@@ -36,6 +36,7 @@ fun HomeScreen(
     pointRepository: PointRepository,
     settingsRepository: SettingsRepository,
     onAddPoint: () -> Unit,
+    onLocateOnMap: (SavedPoint) -> Unit,
     onOpenSettings: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -64,7 +65,7 @@ fun HomeScreen(
 
     HomeContent(controller, gate, tab, {
         tab = it
-    }, history, favorites, selected, running, onAddPoint, onOpenSettings)
+    }, history, favorites, selected, running, onAddPoint, onLocateOnMap, onOpenSettings)
 
     gate.Dialogs()
 }
@@ -81,6 +82,7 @@ private fun HomeContent(
     selected: SelectedPoint?,
     running: Boolean,
     onAddPoint: () -> Unit,
+    onLocateOnMap: (SavedPoint) -> Unit,
     onOpenSettings: () -> Unit,
 ) {
     Scaffold(
@@ -102,6 +104,7 @@ private fun HomeContent(
                 history = history,
                 favorites = favorites,
                 onUse = controller::usePoint,
+                onLocate = onLocateOnMap,
                 onAddPoint = { gate.runWithPermissions(onAddPoint) },
                 onFavorite = controller::setFavorite,
                 onDelete = controller::delete,

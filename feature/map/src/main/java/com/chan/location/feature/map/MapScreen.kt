@@ -22,6 +22,7 @@ import com.chan.location.core.common.MapSource
 import com.chan.location.core.common.MockCheck
 import com.chan.location.core.data.PointRepository
 import com.chan.location.core.data.SettingsRepository
+import com.chan.location.core.data.model.SavedPoint
 import com.chan.location.core.data.model.SelectedPoint
 import com.chan.location.core.ui.component.MockStartGate
 import com.chan.location.core.ui.component.rememberMockStartGate
@@ -58,6 +59,7 @@ fun MapScreen(
     settingsRepository: SettingsRepository,
     mapAdapterFactory: MapAdapterFactory,
     onExit: () -> Unit,
+    focusPointId: Long? = null,
 ) {
     val scope = rememberCoroutineScope()
 
@@ -69,7 +71,8 @@ fun MapScreen(
             overlayRequired = { floatingEnabled },
             permissionDeniedMessage = "需要位置权限才能锁定位置",
         )
-    val handle = rememberMapAdapter(settingsRepository, mapAdapterFactory)
+    val handle =
+        rememberMapAdapter(settingsRepository, mapAdapterFactory, pointRepository, focusPointId)
     val adapter = handle.adapter
     val unsaved = !handle.center.nearlyEquals(handle.committed)
     val context = LocalContext.current
@@ -110,6 +113,32 @@ private fun MapScreenContent(
     )
     MapDialogHost(controller, center, adapter, onExit)
     gate.Dialogs()
+    handle.askUse?.let { point ->
+        AskUseDialog(
+            point = point,
+            onUse = {
+                handle.askUse = null
+                controller.usePoint(point)
+            },
+            onDismiss = { handle.askUse = null },
+        )
+    }
+}
+
+/** 条目定位跳转确认：使用该点启用注入，或仅留在地图查看 */
+@Composable
+private fun AskUseDialog(
+    point: SavedPoint,
+    onUse: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("定位到该点") },
+        text = { Text("已定位到「${point.name.ifBlank { "未命名位置" }}」，是否将其设为虚拟位置？") },
+        confirmButton = { TextButton(onClick = onUse) { Text("使用该点") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("仅查看") } },
+    )
 }
 
 @Composable
@@ -129,39 +158,34 @@ private fun MapDialogHost(
     }
 }
 
-/** 创建并持有地图实例与选点状态：初始视角优先上次选点，未同意隐私强制 OSM */
+/** 创建并持有地图实例与选点状态：初始视角优先定位跳转点、其次上次选点，未同意隐私强制 OSM */
 @Composable
 private fun rememberMapAdapter(
     settingsRepository: SettingsRepository,
     mapAdapterFactory: MapAdapterFactory,
+    pointRepository: PointRepository,
+    focusPointId: Long?,
 ): MapHandle {
     val context = LocalContext.current
     val state = remember { MapHandle() }
     LaunchedEffect(mapAdapterFactory) {
-        val source = settingsRepository.mapSource.first()
-        val privacy = settingsRepository.privacyAgreed.first() == true
-        val selected = settingsRepository.selectedPoint.first()
-        val initial = selected?.let { GeoLatLng(it.wgsLat, it.wgsLng) } ?: DEFAULT_POINT
-        val withMyLocation = privacy && MockCheck.hasLocationPermission(context)
-        val created =
-            mapAdapterFactory.create(
+        val setup =
+            buildMapSetup(
                 context,
-                MapConfig(
-                    source = if (privacy) source else MapSource.OSM,
-                    lat = initial.lat,
-                    lng = initial.lng,
-                    myLocationEnabled = withMyLocation,
-                    privacyAgreed = privacy,
-                ),
+                settingsRepository,
+                mapAdapterFactory,
+                pointRepository,
+                focusPointId,
             )
-        created.onCenterChanged = { lat, lng ->
+        setup.adapter.onCenterChanged = { lat, lng ->
             state.center = GeoLatLng(lat, lng)
         }
-        created.onResume()
-        state.adapter = created
-        state.myLocationEnabled = withMyLocation
-        state.center = initial
-        state.committed = initial
+        setup.adapter.onResume()
+        state.adapter = setup.adapter
+        state.myLocationEnabled = setup.myLocationEnabled
+        state.center = setup.initial
+        state.committed = setup.initial
+        state.askUse = setup.focus
     }
     DisposableEffect(Unit) {
         onDispose {
@@ -172,12 +196,51 @@ private fun rememberMapAdapter(
     return state
 }
 
-/** 地图实例 + 选点状态（center 随拖动更新，committed 为已保存快照） */
+/** 地图初始装配结果：适配器实例、初始视角与蓝点开关 */
+private class MapSetup(
+    val adapter: MapAdapter,
+    val initial: GeoLatLng,
+    val myLocationEnabled: Boolean,
+    val focus: SavedPoint?,
+)
+
+private suspend fun buildMapSetup(
+    context: Context,
+    settings: SettingsRepository,
+    factory: MapAdapterFactory,
+    repo: PointRepository,
+    focusPointId: Long?,
+): MapSetup {
+    val source = settings.mapSource.first()
+    val privacy = settings.privacyAgreed.first() == true
+    val selected = settings.selectedPoint.first()
+    val focus = focusPointId?.let { repo.byId(it) }
+    val initial =
+        focus?.let { GeoLatLng(it.wgsLat, it.wgsLng) }
+            ?: selected?.let { GeoLatLng(it.wgsLat, it.wgsLng) }
+            ?: DEFAULT_POINT
+    val withMyLocation = privacy && MockCheck.hasLocationPermission(context)
+    val adapter =
+        factory.create(
+            context,
+            MapConfig(
+                source = if (privacy) source else MapSource.OSM,
+                lat = initial.lat,
+                lng = initial.lng,
+                myLocationEnabled = withMyLocation,
+                privacyAgreed = privacy,
+            ),
+        )
+    return MapSetup(adapter, initial, withMyLocation, focus)
+}
+
+/** 地图实例 + 选点状态；askUse 为条目定位跳转带来的待确认点位 */
 private class MapHandle {
     var adapter by mutableStateOf<MapAdapter?>(null)
     var myLocationEnabled by mutableStateOf(false)
     var center by mutableStateOf(DEFAULT_POINT)
     var committed by mutableStateOf(DEFAULT_POINT)
+    var askUse by mutableStateOf<SavedPoint?>(null)
 }
 
 /** 地图页操作：弹窗流转、保存/收藏、锁定并启动注入 */
@@ -223,6 +286,16 @@ private class MapController(
                 repo.saveHistory(finalName, center)
                 MockLocationManager.start(SelectedPoint(finalName, center.lat, center.lng))
                 commit()
+            }
+        }
+    }
+
+    /** 条目定位跳转后确认使用：与主页条目点击一致，校验链通过后落历史并注入 */
+    fun usePoint(item: SavedPoint) {
+        gate.requestStart {
+            scope.launch {
+                repo.touch(item.id)
+                MockLocationManager.start(SelectedPoint(item.name, item.wgsLat, item.wgsLng))
             }
         }
     }

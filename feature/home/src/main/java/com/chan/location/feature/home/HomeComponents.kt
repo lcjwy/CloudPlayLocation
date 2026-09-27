@@ -1,5 +1,9 @@
 package com.chan.location.feature.home
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -14,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
@@ -30,6 +35,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -103,6 +109,7 @@ internal fun ColumnScope.PointListSection(
     history: List<SavedPoint>,
     favorites: List<SavedPoint>,
     onUse: (SavedPoint) -> Unit,
+    onLocate: (SavedPoint) -> Unit,
     onAddPoint: () -> Unit,
     onFavorite: (SavedPoint) -> Unit,
     onDelete: (SavedPoint) -> Unit,
@@ -125,6 +132,7 @@ internal fun ColumnScope.PointListSection(
                 PointRow(
                     item = item,
                     onUse = { onUse(item) },
+                    onLocate = { onLocate(item) },
                     onFavorite = { onFavorite(item) },
                     onDelete = { onDelete(item) },
                 )
@@ -137,6 +145,7 @@ internal fun ColumnScope.PointListSection(
 private fun PointRow(
     item: SavedPoint,
     onUse: () -> Unit,
+    onLocate: () -> Unit,
     onFavorite: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -154,6 +163,13 @@ private fun PointRow(
         },
         trailingContent = {
             Row {
+                IconButton(onClick = onLocate) {
+                    Icon(
+                        Icons.Default.MyLocation,
+                        contentDescription = "地图定位",
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
                 FavoriteButton(item.isFavorite, onFavorite)
                 IconButton(onClick = onDelete) {
                     Icon(Icons.Default.Delete, contentDescription = "删除")
@@ -164,20 +180,32 @@ private fun PointRow(
     )
 }
 
+/** 副标题两行：第一行经纬度（点击复制），第二行时间 */
 @Composable
 private fun PointSubtitle(item: SavedPoint) {
-    Text(
-        String.format(
-            Locale.US,
-            "%.6f, %.6f · %s",
-            item.wgsLat,
-            item.wgsLng,
+    val context = LocalContext.current
+    val coordText = String.format(Locale.US, "%.6f, %.6f", item.wgsLat, item.wgsLng)
+    Column {
+        Text(
+            coordText,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.clickable { copyToClipboard(context, coordText) },
+        )
+        Text(
             formatTime(item.lastUsedAt),
-        ),
-        style = MaterialTheme.typography.bodySmall,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-    )
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+private fun copyToClipboard(
+    context: Context,
+    text: String,
+) {
+    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    cm.setPrimaryClip(ClipData.newPlainText("coordinates", text))
+    Toast.makeText(context, "已复制经纬度", Toast.LENGTH_SHORT).show()
 }
 
 @Composable

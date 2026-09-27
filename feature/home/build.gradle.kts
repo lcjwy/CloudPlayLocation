@@ -18,4 +18,6 @@ dependencies {
     implementation(project(":core:data"))
     implementation(project(":core:ui"))
     implementation(project(":service:mock"))
+    // MyLocation 十字准星图标在 extended 包，BOM 托管版本；release 由 R8 裁剪未用图标
+    implementation(libs.androidx.compose.icons.extended)
 }

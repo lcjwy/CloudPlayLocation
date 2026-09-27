@@ -8,9 +8,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.chan.location.core.data.PointRepository
 import com.chan.location.core.data.SettingsRepository
 import com.chan.location.core.ui.theme.LocationTheme
@@ -40,8 +43,11 @@ class MainActivity : ComponentActivity() {
 
 private object Routes {
     const val HOME = "home"
-    const val MAP = "map"
+    const val MAP = "map?pid={pid}"
     const val SETTINGS = "settings"
+
+    /** 携带点位 id 打开地图：定位到该点并确认是否启用 */
+    fun mapWithPoint(pid: Long): String = "map?pid=$pid"
 }
 
 @Composable
@@ -64,21 +70,42 @@ private fun AppRoot(
     }
 
     val navController = rememberNavController()
+    AppNavHost(navController, settings, points, mapAdapterFactory)
+}
+
+@Composable
+private fun AppNavHost(
+    navController: NavHostController,
+    settings: SettingsRepository,
+    points: PointRepository,
+    mapAdapterFactory: MapAdapterFactory,
+) {
     NavHost(navController = navController, startDestination = Routes.HOME) {
         composable(Routes.HOME) {
             HomeScreen(
                 pointRepository = points,
                 settingsRepository = settings,
                 onAddPoint = { navController.navigate(Routes.MAP) },
+                onLocateOnMap = { navController.navigate(Routes.mapWithPoint(it.id)) },
                 onOpenSettings = { navController.navigate(Routes.SETTINGS) },
             )
         }
-        composable(Routes.MAP) {
+        composable(
+            route = Routes.MAP,
+            arguments =
+                listOf(
+                    navArgument("pid") {
+                        type = NavType.StringType
+                        nullable = true
+                    },
+                ),
+        ) { entry ->
             MapScreen(
                 pointRepository = points,
                 settingsRepository = settings,
                 mapAdapterFactory = mapAdapterFactory,
                 onExit = { navController.popBackStack() },
+                focusPointId = entry.arguments?.getString("pid")?.toLongOrNull(),
             )
         }
         composable(Routes.SETTINGS) {
