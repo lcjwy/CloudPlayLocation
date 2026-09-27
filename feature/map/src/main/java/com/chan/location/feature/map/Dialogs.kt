@@ -29,6 +29,7 @@ import kotlinx.coroutines.withContext
 import java.util.Locale
 
 /** 系统 Geocoder 反查地址；失败回退为坐标文本 */
+@Suppress("DEPRECATION") // API 33 起废弃同步重载，但监听器式重载不含超时，保留同步用法
 suspend fun reverseGeocode(
     context: Context,
     point: GeoLatLng,

@@ -49,8 +49,8 @@ object MockCheck {
     }
 
     /** 系统「Wi-Fi 扫描」开关：即使 WiFi 已关也允许扫描定位，是闪回的另一来源；个别 ROM 读取受限则按关闭处理 */
+    @Suppress("DEPRECATION") // isScanAlwaysAvailable 虽标记废弃，仍是读取该开关的唯一途径
     fun isWifiScanAlwaysAvailable(context: Context): Boolean {
-        @Suppress("DEPRECATION")
         val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
         return runCatching { wm?.isScanAlwaysAvailable ?: false }.getOrDefault(false)
     }

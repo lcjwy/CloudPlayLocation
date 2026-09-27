@@ -1,7 +1,6 @@
 package com.chan.location.core.common
 
 import android.content.Context
-import android.location.Criteria
 import android.location.LocationManager
 import android.location.provider.ProviderProperties
 import android.os.Build
@@ -41,6 +40,7 @@ object MockLocationAccess {
                     .build(),
             )
         } else {
+            // minSdk 26：26–30 只有 Criteria 重载可用
             @Suppress("DEPRECATION")
             lm.addTestProvider(
                 LocationManager.GPS_PROVIDER,
@@ -51,8 +51,8 @@ object MockLocationAccess {
                 true,
                 true,
                 false,
-                Criteria.POWER_HIGH,
-                Criteria.ACCURACY_FINE,
+                android.location.Criteria.POWER_HIGH,
+                android.location.Criteria.ACCURACY_FINE,
             )
         }
     }
