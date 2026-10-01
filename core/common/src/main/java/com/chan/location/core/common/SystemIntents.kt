@@ -15,9 +15,6 @@ object SystemIntents {
     /** 位置信息开关页 */
     fun locationSource(): Intent = Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
 
-    /** WLAN 设置页（关闭 WiFi 避免 WiFi 定位引起位置漂移） */
-    fun wifiSettings(): Intent = Intent(Settings.ACTION_WIFI_SETTINGS)
-
     /** 系统「Wi-Fi 扫描」页（隐藏 action，API 23+，部分机型无此页） */
     fun wifiScanningSettings(): Intent = Intent("android.settings.LOCATION_SCANNING_SETTINGS")
 

@@ -35,11 +35,11 @@
   → 位置权限(FINE+COARSE)？ → 否：运行时申请
   → 模拟位置应用已选？(试探 addTestProvider, SecurityException=未选) → 否：跳 ACTION_APPLICATION_DEVELOPMENT_SETTINGS
   → (悬浮窗开启时) canDrawOverlays？ → 否：跳 ACTION_MANAGE_OVERLAY_PERMISSION
-  → WiFi 已开启？(软提醒) → 弹窗：去关闭(跳 ACTION_WIFI_SETTINGS) / 仍要继续
+  → WiFi 已开启？(Toast 软提醒，不阻断，提示后直接启动)
   → MockLocationManager.start(point)
 ```
 - 悬浮窗长按启停走同一校验链，但权限不足只 Toast 不弹窗（`MockLocationManager.tryToggleFromOverlay`）。
-- **WiFi 闪回原理**：系统网络定位服务基于 WiFi 扫描（BSSID）可独立算出真实位置，部分经 FusedLocationProvider 的应用绕过 LocationManager 的 TestProvider，导致位置跳回真实位置。应用侧两层软提醒：① 启动前 WLAN 开启则弹窗（去关闭跳 `ACTION_WIFI_SETTINGS` / 仍要继续）；② 设置页常驻「WiFi 闪回防护」区块，实时显示 WLAN 与系统「Wi-Fi 扫描」状态（`MockCheck.isWifiScanAlwaysAvailable`，ON_RESUME 刷新），引导关闭扫描类开关（跳 `android.settings.LOCATION_SCANNING_SETTINGS`，机型缺失回落 `ACTION_LOCATION_SOURCE_SETTINGS`）。**关闭扫描类开关无需断开 WiFi 联网**。
+- **WiFi 闪回原理**：系统网络定位服务基于 WiFi 扫描（BSSID）可独立算出真实位置，部分经 FusedLocationProvider 的应用绕过 LocationManager 的 TestProvider，导致位置跳回真实位置。应用侧两层软提醒：① 启动前 WLAN 开启则 Toast 提示（不阻断）；② 设置页常驻「WiFi 闪回防护」区块，实时显示 WLAN 与系统「Wi-Fi 扫描」状态（`MockCheck.isWifiScanAlwaysAvailable`，ON_RESUME 刷新），引导关闭扫描类开关（跳 `android.settings.LOCATION_SCANNING_SETTINGS`，机型缺失回落 `ACTION_LOCATION_SOURCE_SETTINGS`）。**关闭扫描类开关无需断开 WiFi 联网**。
 
 ### 2.2 位置注入循环（MockLocationService）
 - 注册双 TestProvider：GPS（API31+ `ProviderProperties(POWER_USAGE_HIGH, ACCURACY_FINE)`，26–30 `Criteria`）+ Network（LOW/COARSE）。
@@ -77,7 +77,7 @@ MapAdapterFactory: (context, MapConfig) -> MapAdapter，由 :app 提供实现选
 ### 2.6 状态管理与 DI
 - `MockLocationManager`（:service:mock 进程级单例）：以 `(悬浮窗开关, 运行开关, 注入频率)` 的 DataStore 组合流为唯一事实源，`reconcileOnChange` collect 后统一启停 MockLocationService/FloatingControlService；进程重启校正残留 mockEnabled。UI 与悬浮窗只调 `start(point)`/`stop()`/`tryToggleFromOverlay()`。`start`：运行中重发 intent 换点；服务已死则**直接重启**（服务被系统杀死后 mockEnabled 残留 true，仅写开关会被 distinctUntilChanged 吞掉导致点击无响应）。
 - Koin（4.x，仅 :app 触碰）：`di/AppModule.kt` 注册 SettingsRepository / PointRepository / MapAdapterFactory 三个单例；`LocationApplication.startKoin` 后经 `MockLocationManager.init(this, get())` 交接；MainActivity 用 `by inject()` 注入后以参数下传，feature 层保持无框架依赖。
-- 启停校验链 UI 下沉为 `:core:ui` 的 `MockStartGate`（`rememberMockStartGate`）：主页与地图页共用「权限申请 → 模拟位置/悬浮窗引导弹窗 → WiFi 提醒」全流程，消除重复。不校验系统 GPS 开关（推荐先启动虚拟位置、再手动开系统定位）。
+- 启停校验链 UI 下沉为 `:core:ui` 的 `MockStartGate`（`rememberMockStartGate`）：主页与地图页共用「权限申请 → 模拟位置/悬浮窗引导弹窗 + WiFi 闪回 Toast 软提醒」全流程，消除重复。不校验系统 GPS 开关（推荐先启动虚拟位置、再手动开系统定位）。
 
 ### 2.7 百度 Key 注入链
 ```
@@ -94,7 +94,7 @@ local.properties(BAIDU_MAP_KEY, 不入库) → :app build.gradle 读取 → mani
 | `:app` | 壳：导航、首启隐私弹窗、Koin 模块装配、Key 注入 | `MainActivity`（NavHost: home / map?pid={pid} / settings，条目定位跳转带 pid）、`LocationApplication`（startKoin + MockLocationManager.init）、`di/AppModule`（Repository/MapAdapterFactory 单例） | 全部模块, Koin |
 | `:core:common` | 无 Android UI 的纯基础：坐标转换、权限校验、系统跳转 | `GeoLatLng`、`MapSource`(枚举)、`CoordUtils`、`MockLocationAccess.isGranted`、`MockCheck`(validate/hasLocationPermission/isWifiEnabled/isWifiScanAlwaysAvailable)、`MockCheckError`、`SystemIntents`(start 支持回落页) | 无 |
 | `:core:data` | 持久化与领域模型 | `SettingsRepository`（mapSource/intervalMs/floatingEnabled/privacyAgreed/mockEnabled/selectedPoint + setters）、`PointRepository`(history/favorites/byId/saveHistory/saveFavorite/setFavorite/delete/touch)、`buildPointRepository(context)`、`SavedPoint`/`SelectedPoint`、`local/`(PointEntity/PointDao/AppDatabase) | :core:common |
-| `:core:ui` | 主题与通用组件 | `theme/LocationTheme`、`EmptyState`、`ConfirmDialog`、`MockStartFlow`（`MockStartGate`/`rememberMockStartGate`/`rememberPermissionGate`/`JumpGuideDialog`/`WifiWarnDialog`/`jumpDialogFor`）、`OnResumeEffect`、`PrivacyPolicyText`、`PrivacyPolicyDialog`（首启与设置页共用） | :core:common, Compose BOM |
+| `:core:ui` | 主题与通用组件 | `theme/LocationTheme`、`EmptyState`、`ConfirmDialog`、`MockStartFlow`（`MockStartGate`/`rememberMockStartGate`/`rememberPermissionGate`/`JumpGuideDialog`/`jumpDialogFor`）、`OnResumeEffect`、`PrivacyPolicyText`、`PrivacyPolicyDialog`（首启与设置页共用） | :core:common, Compose BOM |
 | `:map:api` | 地图抽象（WGS84 契约） | `MapAdapter`、`MapConfig`、`MapAdapterFactory` | :core:common |
 | `:map:baidu` | 百度实现 + SDK 载体（libs/ 内 jar+so，仅 arm64-v8a） | `BaiduSdkInitializer.ensureInit`、`BaiduMapAdapter`（内部 BD09 转换、LocationClient 蓝点 5s 间隔且 onPause 停止） | :map:api, :core:common, BaiduLBS jar |
 | `:map:osm` | osmdroid 实现（Maven 依赖，无 Key） | `OsmMapAdapter`（WGS84 直通、120ms 防抖、私有目录缓存） | :map:api, :core:common, osmdroid-android |

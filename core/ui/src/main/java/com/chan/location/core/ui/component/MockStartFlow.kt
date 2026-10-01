@@ -93,7 +93,7 @@ private fun locationPermissions() =
     }.toTypedArray()
 
 /**
- * 启用虚拟位置的统一闸门：位置权限 → 模拟位置应用/GPS/悬浮窗校验 → WiFi 提醒。
+ * 启用虚拟位置的统一闸门：位置权限 → 模拟位置应用/悬浮窗校验 → WiFi 闪回 Toast 软提醒。
  * 主页与地图页共用，消除各自重复的校验链与引导弹窗。
  */
 class MockStartGate internal constructor(
@@ -101,23 +101,20 @@ class MockStartGate internal constructor(
     private val overlayRequired: () -> Boolean,
     private val withPermissions: (action: () -> Unit) -> Unit,
     private val jump: MutableState<JumpDialogState?>,
-    private val wifiWarn: MutableState<Boolean>,
-    private val pendingStart: MutableState<(() -> Unit)?>,
 ) {
     /** 仅申请位置权限后执行（如进入地图选点页） */
     fun runWithPermissions(action: () -> Unit) = withPermissions(action)
 
-    /** 校验链通过后回调 onReady；失败弹引导或 WiFi 提醒（“仍要继续”后续跑） */
+    /** 校验链通过后回调 onReady；失败弹引导弹窗。WiFi 闪回风险仅 Toast 提示，不阻断启动 */
     fun requestStart(onReady: () -> Unit) {
         withPermissions {
             when (val error = MockCheck.validate(context, overlayRequired = overlayRequired())) {
-                null ->
+                null -> {
                     if (MockCheck.isWifiEnabled(context)) {
-                        pendingStart.value = onReady
-                        wifiWarn.value = true
-                    } else {
-                        onReady()
+                        showToast(context, "WLAN 已开启，如位置闪回请关闭系统Wi-Fi扫描")
                     }
+                    onReady()
+                }
 
                 MockCheckError.LOCATION_PERMISSION -> Unit // 权限闸门已保证
                 else -> jump.value = jumpDialogFor(error, context)
@@ -125,23 +122,10 @@ class MockStartGate internal constructor(
         }
     }
 
-    /** 在页面根部渲染引导弹窗与 WiFi 提醒 */
+    /** 在页面根部渲染引导弹窗 */
     @Composable
     fun Dialogs() {
         JumpGuideDialog(jump.value) { jump.value = null }
-        if (wifiWarn.value) {
-            WifiWarnDialog(
-                onCloseWifi = {
-                    wifiWarn.value = false
-                    SystemIntents.start(context, SystemIntents.wifiSettings())
-                },
-                onProceed = {
-                    wifiWarn.value = false
-                    pendingStart.value?.invoke()
-                    pendingStart.value = null
-                },
-            )
-        }
     }
 }
 
@@ -152,11 +136,9 @@ fun rememberMockStartGate(
 ): MockStartGate {
     val context = LocalContext.current
     val jump = remember { mutableStateOf<JumpDialogState?>(null) }
-    val wifiWarn = remember { mutableStateOf(false) }
-    val pendingStart = remember { mutableStateOf<(() -> Unit)?>(null) }
     val withPermissions = rememberPermissionGate(permissionDeniedMessage)
     return remember(context) {
-        MockStartGate(context, overlayRequired, withPermissions, jump, wifiWarn, pendingStart)
+        MockStartGate(context, overlayRequired, withPermissions, jump)
     }
 }
 
@@ -179,20 +161,4 @@ fun JumpGuideDialog(
             onDismiss = onDismiss,
         )
     }
-}
-
-/** WiFi 闪回提醒：去关闭 WLAN（不阻断的软提醒） */
-@Composable
-fun WifiWarnDialog(
-    onCloseWifi: () -> Unit,
-    onProceed: () -> Unit,
-) {
-    ConfirmDialog(
-        title = "检测到 WLAN 已开启",
-        text = "系统可能基于 WiFi 扫描计算出真实位置，导致虚拟位置闪回。建议关闭 WLAN 后再使用。",
-        confirmText = "去关闭",
-        dismissText = "仍要继续",
-        onConfirm = onCloseWifi,
-        onDismiss = onProceed,
-    )
 }
