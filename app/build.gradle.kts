@@ -89,6 +89,16 @@ androidComponents {
     }
 }
 
+// 一键出正式包：./gradlew release（等价 assembleRelease，结束后自动产出下划线命名副本）
+tasks.register("release") {
+    group = "build"
+    description = "编译签名正式版 APK（等价 assembleRelease，含下划线命名副本输出）"
+    dependsOn("assembleRelease")
+    doLast {
+        logger.lifecycle("正式包输出：app/build/outputs/named/${appName}_${appVersionName}_release.apk")
+    }
+}
+
 dependencies {
     implementation(project(":core:common"))
     implementation(project(":core:data"))
