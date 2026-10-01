@@ -6,7 +6,7 @@
 
 ```
                     ┌─────────┐
-                    │  :app   │  壳：LocationApplication / MainActivity / NavHost / AppContainer
+                    │  :app   │  壳：LocationApplication / MainActivity / NavHost / di/AppModule(Koin)
                     └────┬────┘
         ┌──────────┬─────┼──────────┬───────────────┐
         ▼          ▼     ▼          ▼               ▼
@@ -92,17 +92,17 @@ local.properties(BAIDU_MAP_KEY, 不入库) → :app build.gradle 读取 → mani
 
 | 模块 | 职责 | 关键类（对外接口） | 依赖 |
 |---|---|---|---|
-| `:app` | 壳：导航、隐私弹窗、Koin 模块装配、Key 注入 | `MainActivity`（NavHost: home/map/settings）、`LocationApplication`（startKoin）、`di/AppModule`（Repository/MapAdapterFactory 单例）、`ui/PrivacyDialog` | 全部模块, Koin |
+| `:app` | 壳：导航、首启隐私弹窗、Koin 模块装配、Key 注入 | `MainActivity`（NavHost: home / map?pid={pid} / settings，条目定位跳转带 pid）、`LocationApplication`（startKoin + MockLocationManager.init）、`di/AppModule`（Repository/MapAdapterFactory 单例） | 全部模块, Koin |
 | `:core:common` | 无 Android UI 的纯基础：坐标转换、权限校验、系统跳转 | `GeoLatLng`、`MapSource`(枚举)、`CoordUtils`、`MockLocationAccess.isGranted`、`MockCheck`(validate/hasLocationPermission/isWifiEnabled/isWifiScanAlwaysAvailable)、`MockCheckError`、`SystemIntents`(start 支持回落页) | 无 |
-| `:core:data` | 持久化与领域模型 | `SettingsRepository`（mapSource/intervalMs/floatingEnabled/privacyAgreed/mockEnabled/selectedPoint + setters）、`PointRepository`(history/favorites/saveHistory/saveFavorite/setFavorite/delete/touch)、`buildPointRepository(context)`、`SavedPoint`/`SelectedPoint`、`local/`(PointEntity/PointDao/AppDatabase) | :core:common |
-| `:core:ui` | 主题与通用组件 | `theme/LocationTheme`、`EmptyState`、`ConfirmDialog`、`MockStartFlow`（`MockStartGate`/`rememberMockStartGate`/`JumpGuideDialog`/`WifiWarnDialog`/`jumpDialogFor`）、`OnResumeEffect`、`PrivacyPolicyText` | :core:common, Compose BOM |
+| `:core:data` | 持久化与领域模型 | `SettingsRepository`（mapSource/intervalMs/floatingEnabled/privacyAgreed/mockEnabled/selectedPoint + setters）、`PointRepository`(history/favorites/byId/saveHistory/saveFavorite/setFavorite/delete/touch)、`buildPointRepository(context)`、`SavedPoint`/`SelectedPoint`、`local/`(PointEntity/PointDao/AppDatabase) | :core:common |
+| `:core:ui` | 主题与通用组件 | `theme/LocationTheme`、`EmptyState`、`ConfirmDialog`、`MockStartFlow`（`MockStartGate`/`rememberMockStartGate`/`rememberPermissionGate`/`JumpGuideDialog`/`WifiWarnDialog`/`jumpDialogFor`）、`OnResumeEffect`、`PrivacyPolicyText`、`PrivacyPolicyDialog`（首启与设置页共用） | :core:common, Compose BOM |
 | `:map:api` | 地图抽象（WGS84 契约） | `MapAdapter`、`MapConfig`、`MapAdapterFactory` | :core:common |
 | `:map:baidu` | 百度实现 + SDK 载体（libs/ 内 jar+so，仅 arm64-v8a） | `BaiduSdkInitializer.ensureInit`、`BaiduMapAdapter`（内部 BD09 转换、LocationClient 蓝点） | :map:api, :core:common, BaiduLBS jar |
 | `:map:osm` | osmdroid 实现（Maven 依赖，无 Key） | `OsmMapAdapter`（WGS84 直通、120ms 防抖、私有目录缓存） | :map:api, :core:common, osmdroid-android |
 | `:service:mock` | 虚拟位置核心：注入服务、悬浮窗、状态机 | `MockLocationService`（双 TestProvider 注入循环）、`FloatingControlService`、`FloatingButtonView`（2s 长按进度环/拖动）、`MockLocationManager`（init/start/stop/tryToggleFromOverlay/running）、`MockLocationService.isAlive` | :core:common, :core:data |
-| `:feature:home` | 主页：选中卡片+开关、历史/收藏 Tab、空态 | `HomeScreen(pointRepository, settingsRepository, onAddPoint, onOpenSettings)` | :core:*, :service:mock |
-| `:feature:map` | 地图选点：十字准星、缩放、经纬度输入、锁定/保存/收藏、退出四选一 | `MapScreen(pointRepository, settingsRepository, mapAdapterFactory, onExit)`、`Dialogs.kt`(LatLngInputDialog/NameDialog/reverseGeocode)、`locationPermissions()` | :core:*, :map:api, :service:mock |
-| `:feature:settings` | 设置：地图源/注入频率(10–100ms 步进10)/悬浮窗开关/隐私/开发者选项/关于 | `SettingsScreen(settingsRepository, onBack)` | :core:*, :service:mock |
+| `:feature:home` | 主页：选中卡片+开关、历史/收藏 Tab、经纬度点击复制、条目定位跳转、空态 | `HomeScreen(pointRepository, settingsRepository, onAddPoint, onLocateOnMap, onOpenSettings)`、`HomeComponents`(SelectedPointCard/PointListSection/PointRow) | :core:*, :service:mock, icons-extended |
+| `:feature:map` | 地图选点：十字准星、缩放、经纬度输入、条目定位跳转+确认使用、锁定/保存/收藏、退出四选一 | `MapScreen(..., focusPointId)`（AskUseDialog 确认使用/仅查看）、`Dialogs.kt`(LatLngInputDialog/NameDialog/reverseGeocode)、`MapComponents`(MapSurface/Crosshair/BottomPanel) | :core:*, :map:api, :service:mock |
+| `:feature:settings` | 设置：地图源/注入频率(10–100ms 步进10)/悬浮窗开关/WiFi闪回防护/隐私/开发者选项/关于 | `SettingsScreen(settingsRepository, onBack)` | :core:* |
 | `build-logic` | convention plugins | `location.android.library`（minSdk26/Java11）、`location.android.library.compose`（+compose） | AGP9 + compose compiler |
 
 ## 4. 构建要点（踩坑记录）
