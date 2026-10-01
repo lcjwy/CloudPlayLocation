@@ -34,7 +34,6 @@
 用户开开关 / 点列表项 / 地图页锁定
   → 位置权限(FINE+COARSE)？ → 否：运行时申请
   → 模拟位置应用已选？(试探 addTestProvider, SecurityException=未选) → 否：跳 ACTION_APPLICATION_DEVELOPMENT_SETTINGS
-  → GPS 开关已开？ → 否：跳 ACTION_LOCATION_SOURCE_SETTINGS
   → (悬浮窗开启时) canDrawOverlays？ → 否：跳 ACTION_MANAGE_OVERLAY_PERMISSION
   → WiFi 已开启？(软提醒) → 弹窗：去关闭(跳 ACTION_WIFI_SETTINGS) / 仍要继续
   → MockLocationManager.start(point)
@@ -78,7 +77,7 @@ MapAdapterFactory: (context, MapConfig) -> MapAdapter，由 :app 提供实现选
 ### 2.6 状态管理与 DI
 - `MockLocationManager`（:service:mock 进程级单例）：以 `(悬浮窗开关, 运行开关, 注入频率)` 的 DataStore 组合流为唯一事实源，`reconcileOnChange` collect 后统一启停 MockLocationService/FloatingControlService；进程重启校正残留 mockEnabled。UI 与悬浮窗只调 `start(point)`/`stop()`/`tryToggleFromOverlay()`。
 - Koin（4.x，仅 :app 触碰）：`di/AppModule.kt` 注册 SettingsRepository / PointRepository / MapAdapterFactory 三个单例；`LocationApplication.startKoin` 后经 `MockLocationManager.init(this, get())` 交接；MainActivity 用 `by inject()` 注入后以参数下传，feature 层保持无框架依赖。
-- 启停校验链 UI 下沉为 `:core:ui` 的 `MockStartGate`（`rememberMockStartGate`）：主页与地图页共用「权限申请 → 模拟位置/GPS/悬浮窗引导弹窗 → WiFi 提醒」全流程，消除重复。
+- 启停校验链 UI 下沉为 `:core:ui` 的 `MockStartGate`（`rememberMockStartGate`）：主页与地图页共用「权限申请 → 模拟位置/悬浮窗引导弹窗 → WiFi 提醒」全流程，消除重复。不校验系统 GPS 开关（推荐先启动虚拟位置、再手动开系统定位）。
 
 ### 2.7 百度 Key 注入链
 ```
