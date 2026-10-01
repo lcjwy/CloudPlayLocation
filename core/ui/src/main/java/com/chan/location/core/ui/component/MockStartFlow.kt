@@ -39,13 +39,6 @@ fun jumpDialogFor(
                 SystemIntents.developerOptions(),
             )
 
-        MockCheckError.GPS_DISABLED ->
-            JumpDialogState(
-                "GPS 未开启",
-                "请在系统“位置信息”设置中开启定位。",
-                SystemIntents.locationSource(),
-            )
-
         MockCheckError.OVERLAY_PERMISSION ->
             JumpDialogState(
                 "悬浮窗未授权",

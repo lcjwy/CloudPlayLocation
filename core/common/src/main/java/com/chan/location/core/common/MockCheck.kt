@@ -3,15 +3,13 @@ package com.chan.location.core.common
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
-import android.location.LocationManager
 import android.net.wifi.WifiManager
 import android.provider.Settings
 
-/** 启用虚拟位置前的检查项 */
+/** 启用虚拟位置前的检查项（不校验系统 GPS 开关：推荐先启动虚拟位置、再手动开系统定位） */
 enum class MockCheckError {
     LOCATION_PERMISSION,
     MOCK_NOT_SELECTED,
-    GPS_DISABLED,
     OVERLAY_PERMISSION,
 }
 
@@ -24,7 +22,6 @@ object MockCheck {
         when {
             !hasLocationPermission(context) -> MockCheckError.LOCATION_PERMISSION
             !MockLocationAccess.isGranted(context) -> MockCheckError.MOCK_NOT_SELECTED
-            !isGpsEnabled(context) -> MockCheckError.GPS_DISABLED
             overlayRequired &&
                 !Settings.canDrawOverlays(
                     context,
@@ -35,11 +32,6 @@ object MockCheck {
     fun hasLocationPermission(context: Context): Boolean =
         granted(context, Manifest.permission.ACCESS_FINE_LOCATION) ||
             granted(context, Manifest.permission.ACCESS_COARSE_LOCATION)
-
-    fun isGpsEnabled(context: Context): Boolean {
-        val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        return lm.isProviderEnabled(LocationManager.GPS_PROVIDER)
-    }
 
     /** WiFi 开启时系统可能基于 WiFi 扫描算出真实位置，导致虚拟位置"闪回"（仅提示，不阻断） */
     fun isWifiEnabled(context: Context): Boolean {

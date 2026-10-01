@@ -128,7 +128,6 @@ object MockLocationManager {
         when (error) {
             MockCheckError.LOCATION_PERMISSION -> "请先授予定位权限"
             MockCheckError.MOCK_NOT_SELECTED -> "请先在开发者选项中选择本应用为模拟位置应用"
-            MockCheckError.GPS_DISABLED -> "请先开启 GPS"
             MockCheckError.OVERLAY_PERMISSION -> "请先授予悬浮窗权限"
         }
 }
