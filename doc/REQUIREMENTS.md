@@ -86,6 +86,7 @@ FOREGROUND_SERVICE_LOCATION / FOREGROUND_SERVICE_SPECIAL_USE / SYSTEM_ALERT_WIND
 - `MockLocationService`：前台服务，`foregroundServiceType="location"`。
   - 注册 GPS + Network 双 TestProvider：API 31+ 用 `ProviderProperties`（GPS: POWER_USAGE_HIGH/ACCURACY_FINE；Network: POWER_USAGE_LOW/ACCURACY_COARSE），API 26–30 用 `Criteria` 重载。
   - HandlerThread 循环按**设置频率（10–100ms，默认 100ms）**依次调用 `setTestProviderLocation`（GPS 与 Network 各一次）。
+  - **耗电优化**：息屏后注入间隔钳制到 ≥1s（亮屏立即恢复设定值）；百度蓝点定位 5s 一次且地图页离开前台即停止，避免后台持续 GPS/WiFi 扫描。
   - Location 字段：accuracy、altitude（默认 55.0）、bearing、speed、`System.currentTimeMillis()`、`elapsedRealtimeNanos()`、extras（`satellites=7`）。
   - 通知：显示当前坐标，点击回 MainActivity；停止时 removeTestProvider 双 provider + stopForeground。
 - `FloatingControlService`：前台服务 `foregroundServiceType="specialUse"`，仅在悬浮窗开关开启时运行，持有悬浮按钮，最小化通知（静音渠道）。

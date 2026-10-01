@@ -43,7 +43,7 @@
 
 ### 2.2 位置注入循环（MockLocationService）
 - 注册双 TestProvider：GPS（API31+ `ProviderProperties(POWER_USAGE_HIGH, ACCURACY_FINE)`，26–30 `Criteria`）+ Network（LOW/COARSE）。
-- `HandlerThread("MockLocation")` 自循环：每 interval（10–100ms，默认 100）先 Network 后 GPS 各 `setTestProviderLocation` 一次。
+- `HandlerThread("MockLocation")` 自循环：每 interval（10–100ms，默认 100）先 Network 后 GPS 各 `setTestProviderLocation` 一次。**息屏钳制间隔 ≥1s**（SCREEN_OFF/ON 广播切换，亮屏即恢复），降低后台唤醒与 IPC。
 - Location 字段：accuracy(GPS=1f/Network=50f)、altitude=55.0、speed=0、bearing=0、time、elapsedRealtimeNanos、extras(satellites=7)。
 - 运行中换点/改频率 = 重发 intent（`onStartCommand` 更新并重排循环）；服务无 BIND，状态经 companion `isAlive` 暴露。
 - `SecurityException`（模拟位置应用被取消选择）→ 停止注入并自杀。
@@ -96,7 +96,7 @@ local.properties(BAIDU_MAP_KEY, 不入库) → :app build.gradle 读取 → mani
 | `:core:data` | 持久化与领域模型 | `SettingsRepository`（mapSource/intervalMs/floatingEnabled/privacyAgreed/mockEnabled/selectedPoint + setters）、`PointRepository`(history/favorites/byId/saveHistory/saveFavorite/setFavorite/delete/touch)、`buildPointRepository(context)`、`SavedPoint`/`SelectedPoint`、`local/`(PointEntity/PointDao/AppDatabase) | :core:common |
 | `:core:ui` | 主题与通用组件 | `theme/LocationTheme`、`EmptyState`、`ConfirmDialog`、`MockStartFlow`（`MockStartGate`/`rememberMockStartGate`/`rememberPermissionGate`/`JumpGuideDialog`/`WifiWarnDialog`/`jumpDialogFor`）、`OnResumeEffect`、`PrivacyPolicyText`、`PrivacyPolicyDialog`（首启与设置页共用） | :core:common, Compose BOM |
 | `:map:api` | 地图抽象（WGS84 契约） | `MapAdapter`、`MapConfig`、`MapAdapterFactory` | :core:common |
-| `:map:baidu` | 百度实现 + SDK 载体（libs/ 内 jar+so，仅 arm64-v8a） | `BaiduSdkInitializer.ensureInit`、`BaiduMapAdapter`（内部 BD09 转换、LocationClient 蓝点） | :map:api, :core:common, BaiduLBS jar |
+| `:map:baidu` | 百度实现 + SDK 载体（libs/ 内 jar+so，仅 arm64-v8a） | `BaiduSdkInitializer.ensureInit`、`BaiduMapAdapter`（内部 BD09 转换、LocationClient 蓝点 5s 间隔且 onPause 停止） | :map:api, :core:common, BaiduLBS jar |
 | `:map:osm` | osmdroid 实现（Maven 依赖，无 Key） | `OsmMapAdapter`（WGS84 直通、120ms 防抖、私有目录缓存） | :map:api, :core:common, osmdroid-android |
 | `:service:mock` | 虚拟位置核心：注入服务、悬浮窗、状态机 | `MockLocationService`（双 TestProvider 注入循环）、`FloatingControlService`、`FloatingButtonView`（2s 长按进度环/拖动）、`MockLocationManager`（init/start/stop/tryToggleFromOverlay/running）、`MockLocationService.isAlive` | :core:common, :core:data |
 | `:feature:home` | 主页：选中卡片+开关、历史/收藏 Tab、经纬度点击复制、条目定位跳转、空态 | `HomeScreen(pointRepository, settingsRepository, onAddPoint, onLocateOnMap, onOpenSettings)`、`HomeComponents`(SelectedPointCard/PointListSection/PointRow) | :core:*, :service:mock, icons-extended |
