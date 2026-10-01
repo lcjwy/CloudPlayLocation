@@ -167,7 +167,7 @@ private fun PointRow(
                     Icon(
                         Icons.Default.MyLocation,
                         contentDescription = "地图定位",
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = LOCATE_TINT,
                     )
                 }
                 FavoriteButton(item.isFavorite, onFavorite)
@@ -229,6 +229,9 @@ private fun FavoriteButton(
 }
 
 private val FAVORITE_TINT = Color(0xFFE91E63)
+
+/** 列表条目「地图定位」按钮：红色，与收藏/删除区分 */
+private val LOCATE_TINT = Color(0xFFF44336)
 
 private val timeFormat = SimpleDateFormat("MM-dd HH:mm", Locale.CHINA)
 

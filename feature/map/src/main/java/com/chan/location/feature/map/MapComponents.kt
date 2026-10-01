@@ -39,6 +39,9 @@ import com.chan.location.core.common.GeoLatLng
 import com.chan.location.map.api.MapAdapter
 import java.util.Locale
 
+/** 地图页「我的位置」按钮：蓝色，与地图蓝点语义一致 */
+private val MY_LOCATION_TINT = Color(0xFF2196F3)
+
 /** 地图画布 + 全部悬浮控件 */
 @Composable
 internal fun MapSurface(
@@ -136,7 +139,11 @@ private fun MapTopBar(
         }
         if (myLocationEnabled) {
             CircleButton(onClick = onLocate) {
-                Icon(Icons.Default.Place, contentDescription = "我的位置")
+                Icon(
+                    Icons.Default.Place,
+                    contentDescription = "我的位置",
+                    tint = MY_LOCATION_TINT,
+                )
             }
         }
     }
