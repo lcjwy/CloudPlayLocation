@@ -81,15 +81,20 @@ object MockLocationManager {
         }
     }
 
-    /** 启动或换点（运行中直接更新注入目标；未运行则经 reconcile 启动，调用方需先通过 MockCheck 校验） */
+    /**
+     * 启动或换点：运行中直接重发 intent 换点；服务已死则直接重启。
+     * 不能只写 mockEnabled=true：服务被系统杀死后开关残留 true，
+     * 值无变化会被 distinctUntilChanged 吞掉、recollect 永不触发。
+     * 调用方需先通过 MockCheck 校验。
+     */
     suspend fun start(point: SelectedPoint) {
         current = point
         settings.setSelectedPoint(point)
+        val intent = MockLocationService.intent(appCtx, point, settings.intervalMs.first())
         if (MockLocationService.isAlive) {
-            appCtx.startService(
-                MockLocationService.intent(appCtx, point, settings.intervalMs.first()),
-            )
+            appCtx.startService(intent)
         } else {
+            startServiceSafe(intent)
             settings.setMockEnabled(true)
         }
     }
