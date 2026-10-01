@@ -90,6 +90,7 @@ private fun AppNavHost(
                 pointRepository = points,
                 settingsRepository = settings,
                 onAddPoint = { navController.navigate(Routes.MAP_PLAIN) },
+                onOpenMap = { navController.navigate(Routes.MAP_PLAIN) },
                 onLocateOnMap = { navController.navigate(Routes.mapWithPoint(it.id)) },
                 onOpenSettings = { navController.navigate(Routes.SETTINGS) },
             )

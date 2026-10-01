@@ -77,6 +77,11 @@ class PointRepository(
 
     suspend fun delete(id: Long) = dao.delete(id)
 
+    /** 批量删除（列表多选管理）；空列表忽略，避免拼出 IN () 非法 SQL */
+    suspend fun deleteAll(ids: List<Long>) {
+        if (ids.isNotEmpty()) dao.deleteAll(ids)
+    }
+
     suspend fun touch(id: Long) = dao.touch(id, System.currentTimeMillis())
 
     private fun toDomain(e: PointEntity) =

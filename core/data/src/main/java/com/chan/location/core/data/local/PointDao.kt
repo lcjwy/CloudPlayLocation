@@ -37,6 +37,10 @@ interface PointDao {
     @Query("DELETE FROM points WHERE id = :id")
     suspend fun delete(id: Long)
 
+    /** 空列表会生成非法 SQL（IN ()），调用方需保证非空 */
+    @Query("DELETE FROM points WHERE id IN (:ids)")
+    suspend fun deleteAll(ids: List<Long>)
+
     @Query("UPDATE points SET isFavorite = :favorite WHERE id = :id")
     suspend fun setFavorite(
         id: Long,
