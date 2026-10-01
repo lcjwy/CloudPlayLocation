@@ -3,8 +3,10 @@ package com.chan.location.service.mock
 import android.app.Notification
 import android.app.NotificationManager
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.location.Location
 import android.location.LocationManager
@@ -14,10 +16,12 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
+import android.os.PowerManager
 import android.os.Process
 import android.os.SystemClock
 import android.widget.Toast
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import com.chan.location.core.data.model.SelectedPoint
 import java.util.Locale
 
@@ -40,12 +44,38 @@ class MockLocationService : Service() {
     private var lastNotifiedLat = Double.NaN
     private var lastNotifiedLng = Double.NaN
 
+    /** 息屏后降低注入频率（耗电优化）；亮屏立即恢复设定值 */
+    private var screenOn = true
+
+    private val screenStateReceiver =
+        object : BroadcastReceiver() {
+            override fun onReceive(
+                context: Context,
+                intent: Intent,
+            ) {
+                screenOn = intent.action == Intent.ACTION_SCREEN_ON
+                handler?.removeCallbacks(tick)
+                handler?.post(tick)
+            }
+        }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
         isAlive = true
         lm = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        screenOn =
+            (getSystemService(Context.POWER_SERVICE) as PowerManager).isInteractive
+        ContextCompat.registerReceiver(
+            this,
+            screenStateReceiver,
+            IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_ON)
+                addAction(Intent.ACTION_SCREEN_OFF)
+            },
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
         ServiceNotifications.createChannel(
             this,
             CHANNEL_ID,
@@ -127,7 +157,14 @@ class MockLocationService : Service() {
     private val tick: Runnable =
         Runnable {
             injectAll()
-            handler?.postDelayed(tick, intervalMs.toLong())
+            // 亮屏用设定频率；息屏钳制到 ≥1s，大幅减少唤醒与 IPC 次数
+            val delay =
+                if (screenOn) {
+                    intervalMs.toLong()
+                } else {
+                    maxOf(intervalMs.toLong(), SCREEN_OFF_MIN_INTERVAL_MS)
+                }
+            handler?.postDelayed(tick, delay)
         }
 
     private fun injectAll() {
@@ -184,6 +221,7 @@ class MockLocationService : Service() {
 
     override fun onDestroy() {
         isAlive = false
+        unregisterReceiver(screenStateReceiver)
         handler?.removeCallbacks(tick)
         handlerThread?.quitSafely()
         handlerThread = null
@@ -210,6 +248,7 @@ class MockLocationService : Service() {
         private const val NETWORK_ACCURACY = 50f
         private const val ALTITUDE = 55.0
         private const val SATELLITES = 7
+        private const val SCREEN_OFF_MIN_INTERVAL_MS = 1000L
 
         @Volatile
         var isAlive = false

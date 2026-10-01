@@ -127,7 +127,8 @@ class BaiduMapAdapter(
             LocationClientOption().apply {
                 locationMode = LocationClientOption.LocationMode.Hight_Accuracy
                 setCoorType("bd09ll")
-                setScanSpan(1000)
+                // 蓝点参考用途，5s 一次足够；1s 连续定位耗电明显
+                setScanSpan(5000)
                 setIsNeedAddress(false)
                 setIsNeedLocationDescribe(false)
             }
@@ -168,9 +169,16 @@ class BaiduMapAdapter(
         return true
     }
 
-    override fun onResume() = mapView.onResume()
+    override fun onResume() {
+        mapView.onResume()
+        // 页面回前台才恢复定位，后台不持续扫描（耗电优化）
+        if (myLocationEnabled) locationClient?.start()
+    }
 
-    override fun onPause() = mapView.onPause()
+    override fun onPause() {
+        locationClient?.stop()
+        mapView.onPause()
+    }
 
     override fun onDestroy() {
         locationClient?.stop()
