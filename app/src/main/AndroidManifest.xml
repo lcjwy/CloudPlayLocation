@@ -7,7 +7,9 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!-- 废弃的签名级权限，运行时不可授予；但开发者选项「模拟位置信息应用」
          选择器仅列出声明了它的应用，缺失则本应用无法被选中 -->
-    <uses-permission android:name="android.permission.ACCESS_MOCK_LOCATION" />
+    <uses-permission
+            android:name="android.permission.ACCESS_MOCK_LOCATION"
+            tools:ignore="MockLocation" />
     <!-- Android 13+ 前台服务通知可见性 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- 地图瓦片 / 反地理编码 -->

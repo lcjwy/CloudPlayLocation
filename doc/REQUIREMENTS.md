@@ -73,7 +73,7 @@ ACCESS_FINE_LOCATION / ACCESS_COARSE_LOCATION / POST_NOTIFICATIONS /
 ACCESS_MOCK_LOCATION / INTERNET / FOREGROUND_SERVICE /
 FOREGROUND_SERVICE_LOCATION / FOREGROUND_SERVICE_SPECIAL_USE / SYSTEM_ALERT_WINDOW
 ```
-- `ACCESS_MOCK_LOCATION` 为废弃的签名级权限（运行时不可授予），但开发者选项「模拟位置信息应用」选择器**仅列出声明了它的应用**，必须声明否则应用不出现在选择器中。
+- `ACCESS_MOCK_LOCATION` 为废弃的签名级权限（运行时不可授予），但开发者选项「模拟位置信息应用」选择器**仅列出声明了它的应用**，必须声明否则应用不出现在选择器中。lint 的 MockLocation 检查会视其为 fatal 阻断 release 编译，已用 `tools:ignore="MockLocation"` 定向豁免（本应用核心功能即模拟定位，release 同样需要）。
 - 明确**不引入** Gogogo 中的 `READ_PHONE_STATE`、`READ_EXTERNAL_STORAGE`、`REQUEST_INSTALL_PACKAGES` 等无关权限。
 - 构建后核对 merged manifest；osmdroid AAR 合入的多余权限用 `tools:node="remove"` 剔除。
 

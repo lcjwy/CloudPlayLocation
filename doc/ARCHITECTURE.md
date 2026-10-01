@@ -114,6 +114,8 @@ local.properties(BAIDU_MAP_KEY, 不入库) → :app build.gradle 读取 → mani
 - DataStore 属性委托 `preferencesDataStore` 是单例约束：同文件同进程只能有一份（SettingsRepository 持 context 单例使用）。
 - `gradle-daemon-jvm.properties` 固定 JDK 21 工具链（foojay 解析）。
 - **detekt/ktlint 接入**：detekt 1.23.8 在 Gradle 9.2.1 可用（2.0 尚为 alpha）；`@Composable` 命名需 `.editorconfig` 设 `ktlint_function_naming_ignore_when_annotated_with = Composable`；`EmptyFunctionBlock` 属 `empty-blocks` 规则集（非 style）；MagicNumber 对 Compose UI 字面量是噪音，已关闭。
+- **出包命令**：正式包直接 `./gradlew release`（`app/build.gradle.kts` 的快捷任务，= assembleRelease + 自动输出 `app/build/outputs/named/虚拟定位_1.1.0_release.apk` 下划线命名副本）。
+- **lintVital 阻断 release**：release 编译自动跑 lintVital，`ACCESS_MOCK_LOCATION` 会触发 MockLocation fatal 检查（lint 默认该权限仅限 debug 构建）；已在 manifest 该条目上加 `tools:ignore="MockLocation"` 定向豁免。
 
 ## 5. 待办与已知边界
 
