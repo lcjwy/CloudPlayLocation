@@ -169,6 +169,11 @@ class BaiduMapAdapter(
         return true
     }
 
+    override suspend fun reverseGeocode(
+        lat: Double,
+        lng: Double,
+    ): String? = baiduReverseGeocode(GeoLatLng(lat, lng))
+
     override fun onResume() {
         mapView.onResume()
         // 页面回前台才恢复定位，后台不持续扫描（耗电优化）

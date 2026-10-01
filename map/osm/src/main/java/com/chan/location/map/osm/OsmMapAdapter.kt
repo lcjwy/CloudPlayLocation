@@ -136,6 +136,12 @@ class OsmMapAdapter(
         return true
     }
 
+    /** 无对应在线反查服务，交由上层回退系统 Geocoder */
+    override suspend fun reverseGeocode(
+        lat: Double,
+        lng: Double,
+    ): String? = null
+
     override fun onResume() {
         mapView.onResume()
         myLocationOverlay?.enableMyLocation()

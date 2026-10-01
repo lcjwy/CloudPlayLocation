@@ -32,6 +32,12 @@ interface MapAdapter {
     /** 相机移动到真实位置；尚无定位结果返回 false */
     fun moveToMyLocation(): Boolean
 
+    /** 反查地点名（WGS84 入参）；实现不支持或失败返回 null，由调用方回退系统 Geocoder */
+    suspend fun reverseGeocode(
+        lat: Double,
+        lng: Double,
+    ): String?
+
     fun onResume()
 
     fun onPause()

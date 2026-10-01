@@ -21,4 +21,5 @@ dependencies {
     implementation(project(":map:api"))
     implementation(project(":core:common"))
     implementation(files("libs/BaiduLBS_Android.jar"))
+    implementation(libs.kotlinx.coroutines.android)
 }

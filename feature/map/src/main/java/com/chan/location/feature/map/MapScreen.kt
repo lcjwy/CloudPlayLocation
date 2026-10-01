@@ -151,8 +151,8 @@ private fun MapDialogHost(
     val onDismiss = { controller.dialog = null }
     when (val dialog = controller.dialog) {
         MapDialog.LatLng -> LatLngJumpDialog(center, adapter, onDismiss)
-        MapDialog.Lock -> LockNameDialog(center, controller::lock, onDismiss)
-        is MapDialog.Save -> SaveNameDialog(dialog.favorite, center, controller, onExit)
+        MapDialog.Lock -> LockNameDialog(center, adapter, controller::lock, onDismiss)
+        is MapDialog.Save -> SaveNameDialog(dialog.favorite, center, adapter, controller, onExit)
         MapDialog.Exit -> ExitUnsavedDialog(controller, onExit)
         null -> Unit
     }
@@ -267,7 +267,7 @@ private class MapController(
         onExit: () -> Unit,
     ) {
         scope.launch {
-            val finalName = name.ifBlank { reverseGeocode(context, center) }
+            val finalName = name.ifBlank { reverseGeocode(context, handle.adapter, center) }
             if (favorite) {
                 repo.saveFavorite(finalName, center)
             } else {
@@ -282,7 +282,7 @@ private class MapController(
     fun lock(name: String) {
         gate.requestStart {
             scope.launch {
-                val finalName = name.ifBlank { reverseGeocode(context, center) }
+                val finalName = name.ifBlank { reverseGeocode(context, handle.adapter, center) }
                 repo.saveHistory(finalName, center)
                 MockLocationManager.start(SelectedPoint(finalName, center.lat, center.lng))
                 commit()
@@ -320,6 +320,7 @@ private fun LatLngJumpDialog(
 @Composable
 private fun LockNameDialog(
     center: GeoLatLng,
+    adapter: MapAdapter?,
     onLock: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -327,6 +328,7 @@ private fun LockNameDialog(
         title = "锁定虚拟位置",
         message = "将该位置设为虚拟位置并开始注入，同时记录到历史。",
         center = center,
+        adapter = adapter,
         confirmText = "锁定",
         onConfirm = { name ->
             onDismiss()
@@ -340,6 +342,7 @@ private fun LockNameDialog(
 private fun SaveNameDialog(
     favorite: Boolean,
     center: GeoLatLng,
+    adapter: MapAdapter?,
     controller: MapController,
     onExit: () -> Unit,
 ) {
@@ -347,6 +350,7 @@ private fun SaveNameDialog(
         title = if (favorite) "收藏该位置" else "保存到历史",
         message = null,
         center = center,
+        adapter = adapter,
         confirmText = "保存",
         onConfirm = { name ->
             controller.dialog = null

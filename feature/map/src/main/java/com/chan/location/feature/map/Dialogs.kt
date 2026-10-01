@@ -24,17 +24,20 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.chan.location.core.common.CoordUtils
 import com.chan.location.core.common.GeoLatLng
+import com.chan.location.map.api.MapAdapter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.Locale
 
-/** 系统 Geocoder 反查地址；失败回退为坐标文本 */
+/** 反查地点名：优先当前地图源（百度反地理编码，国内命中率高），失败回退系统 Geocoder，再回退坐标文本 */
 @Suppress("DEPRECATION") // API 33 起废弃同步重载，但监听器式重载不含超时，保留同步用法
-suspend fun reverseGeocode(
+internal suspend fun reverseGeocode(
     context: Context,
+    adapter: MapAdapter?,
     point: GeoLatLng,
-): String =
-    withContext(Dispatchers.IO) {
+): String {
+    adapter?.reverseGeocode(point.lat, point.lng)?.takeIf { it.isNotBlank() }?.let { return it }
+    return withContext(Dispatchers.IO) {
         runCatching {
             Geocoder(context, Locale.CHINA)
                 .getFromLocation(point.lat, point.lng, 1)
@@ -43,6 +46,7 @@ suspend fun reverseGeocode(
         }.getOrNull()?.takeIf { it.isNotBlank() }
             ?: String.format(Locale.US, "%.6f, %.6f", point.lat, point.lng)
     }
+}
 
 /** 名称确认弹窗：默认名异步反查，用户修改后不再覆盖。不确认不落库 */
 @Composable
@@ -50,6 +54,7 @@ internal fun NameDialog(
     title: String,
     message: String?,
     center: GeoLatLng,
+    adapter: MapAdapter?,
     confirmText: String,
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit,
@@ -58,7 +63,7 @@ internal fun NameDialog(
     var name by remember { mutableStateOf("") }
     var touched by remember { mutableStateOf(false) }
     LaunchedEffect(center) {
-        if (!touched) name = reverseGeocode(context, center)
+        if (!touched) name = reverseGeocode(context, adapter, center)
     }
     AlertDialog(
         onDismissRequest = onDismiss,
