@@ -21,11 +21,14 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -123,6 +126,7 @@ private fun CircleButton(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MapTopBar(
     onBack: () -> Unit,
@@ -130,23 +134,26 @@ private fun MapTopBar(
     onLocate: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(
-        modifier = modifier.fillMaxWidth().padding(8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        CircleButton(onClick = onBack) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-        }
-        if (myLocationEnabled) {
-            CircleButton(onClick = onLocate) {
-                Icon(
-                    Icons.Default.Place,
-                    contentDescription = "我的位置",
-                    tint = MY_LOCATION_TINT,
-                )
+    TopAppBar(
+        title = { Text("地图") },
+        navigationIcon = {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
             }
-        }
-    }
+        },
+        actions = {
+            if (myLocationEnabled) {
+                IconButton(onClick = onLocate) {
+                    Icon(
+                        Icons.Default.Place,
+                        contentDescription = "我的位置",
+                        tint = MY_LOCATION_TINT,
+                    )
+                }
+            }
+        },
+        modifier = modifier,
+    )
 }
 
 @Composable
