@@ -72,17 +72,19 @@ android {
 androidComponents {
     // AGP9 已移除 outputFileName 原地改名；改为构建后复制下划线命名副本。
     // 原名 app-debug.apk 保留：IDE 部署依赖 output-metadata.json 指向原名。
+    // 副本输出到项目级 build 目录（rootProject.layout），交付物不混在 module 产物里。
     onVariants { variant ->
         val variantName = variant.name
         val cap = variantName.replaceFirstChar { it.uppercase() }
         val taskName = "copyApk$cap"
         val apkDir = variant.artifacts.get(SingleArtifact.APK)
+        val namedDir = rootProject.layout.buildDirectory.dir("outputs/named")
         tasks.register<Copy>(taskName) {
             group = "build"
-            description = "输出下划线命名的 APK 副本（交付用）"
+            description = "输出下划线命名的 APK 副本（交付用，位于项目级 build 目录）"
             from(apkDir)
             include("*.apk")
-            into(layout.buildDirectory.dir("outputs/named"))
+            into(namedDir)
             rename { "${appName}_${appVersionName}_$variantName.apk" }
         }
         tasks.matching { it.name == "assemble$cap" }.configureEach { finalizedBy(taskName) }
@@ -95,7 +97,7 @@ tasks.register("release") {
     description = "编译签名正式版 APK（等价 assembleRelease，含下划线命名副本输出）"
     dependsOn("assembleRelease")
     doLast {
-        logger.lifecycle("正式包输出：app/build/outputs/named/${appName}_${appVersionName}_release.apk")
+        logger.lifecycle("正式包输出：build/outputs/named/${appName}_${appVersionName}_release.apk")
     }
 }
 
