@@ -62,10 +62,14 @@ internal fun NameDialog(
     var name by remember { mutableStateOf("") }
     var touched by remember { mutableStateOf(false) }
     LaunchedEffect(center) {
+        // 先用坐标即时预填，反查回来且用户未输入时才替换：
+        // 反查最长 3s，期间用户的输入不能被迟到结果覆盖
         if (!touched) {
-            name =
-                reverseGeocode(context, adapter, center)
-                    ?: String.format(Locale.US, "%.6f, %.6f", center.lat, center.lng)
+            name = String.format(Locale.US, "%.6f, %.6f", center.lat, center.lng)
+        }
+        val resolved = reverseGeocode(context, adapter, center)
+        if (!touched && resolved != null) {
+            name = resolved
         }
     }
     AlertDialog(
