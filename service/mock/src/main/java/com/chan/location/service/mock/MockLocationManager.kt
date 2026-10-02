@@ -101,7 +101,12 @@ object MockLocationManager {
         settings.setSelectedPoint(point)
         val intent = MockLocationService.intent(appCtx, point, settings.intervalMs.first())
         if (MockLocationService.isAlive) {
-            appCtx.startService(intent)
+            try {
+                appCtx.startService(intent)
+            } catch (ignore: IllegalStateException) {
+                // 后台态裸 startService 会被系统拒绝：回落到前台服务安全启动（含失败提示）
+                startServiceSafe(intent)
+            }
         } else {
             startServiceSafe(intent)
             settings.setMockEnabled(true)
