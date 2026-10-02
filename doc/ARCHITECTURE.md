@@ -73,7 +73,7 @@ MapAdapterFactory: (context, MapConfig) -> MapAdapter，由 :app 提供实现选
 ### 2.5 悬浮窗手势（FloatingButtonView + FloatingControlService）
 - `TYPE_APPLICATION_OVERLAY` + NOT_FOCUSABLE|NOT_TOUCH_MODAL，rawX/rawY 差值拖动 + `updateViewLayout`。
 - ACTION_DOWN 起 2s 计时（33ms 进度环刷新）；移动超 touchSlop → 判定拖动并取消长按；2s 计满 → 震动 + `tryToggleFromOverlay()`。
-- FloatingControlService 为 specialUse FGS（manifest 声明 PROPERTY_SPECIAL_USE_FGS_SUBTYPE）。
+- FloatingControlService 为 specialUse FGS（manifest 声明 PROPERTY_SPECIAL_USE_FGS_SUBTYPE）；仅在虚拟位置运行中存在，停止注入即随 reconcile 消失。
 
 ### 2.6 状态管理与 DI
 - `MockLocationManager`（:service:mock 进程级单例）：以 `(悬浮窗开关, 运行开关, 注入频率)` 的 DataStore 组合流为唯一事实源，`reconcileOnChange` collect 后统一启停 MockLocationService/FloatingControlService；进程重启校正残留 mockEnabled。UI 与悬浮窗只调 `start(point)`/`stop()`/`tryToggleFromOverlay()`。`start`：运行中重发 intent 换点；服务已死则**直接重启**（服务被系统杀死后 mockEnabled 残留 true，仅写开关会被 distinctUntilChanged 吞掉导致点击无响应）。FGS 启动失败（后台限制）经 `startServiceSafe` **回滚对应服务的开关**（启动成功才写运行开关），悬浮窗失败不误关虚拟位置。
