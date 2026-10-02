@@ -14,7 +14,7 @@ val localProps =
     }
 
 // 输出 APK 命名（下划线连接，不带空格）：虚拟定位_版本_构建类型.apk
-val appVersionName = "1.1.0"
+val appVersionName = "1.2.0"
 val appName = "虚拟定位"
 
 android {
@@ -30,7 +30,7 @@ android {
         applicationId = "com.chan.location"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
+        versionCode = 3
         versionName = appVersionName
         manifestPlaceholders["baiduMapKey"] =
             localProps.getProperty("BAIDU_MAP_KEY") ?: "PLEASE_APPLY_BAIDU_AK"
