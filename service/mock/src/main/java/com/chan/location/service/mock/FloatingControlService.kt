@@ -22,7 +22,6 @@ class FloatingControlService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        isAlive = true
         ServiceNotifications.createChannel(
             this,
             CHANNEL_ID,
@@ -118,7 +117,6 @@ class FloatingControlService : Service() {
     }
 
     override fun onDestroy() {
-        isAlive = false
         buttonView?.let { view ->
             try {
                 windowManager?.removeView(view)
@@ -135,9 +133,5 @@ class FloatingControlService : Service() {
         private const val NOTIFICATION_ID = 2
         private const val INITIAL_X = 40
         private const val INITIAL_Y = 300
-
-        @Volatile
-        var isAlive = false
-            private set
     }
 }
