@@ -36,7 +36,10 @@ class FloatingControlService : Service() {
         startId: Int,
     ): Int {
         if (startForegroundSafely()) showOverlay()
-        return START_STICKY
+        // 生命周期完全由 MockLocationManager 按 (运行, 悬浮窗开关) 驱动；
+        // STICKY 会在进程被杀后复活服务，与状态校正竞态时留下
+        // 悬浮窗开关实际已关/虚拟位置已停的"幽灵按钮"，故不自动重启
+        return START_NOT_STICKY
     }
 
     /** FGS 启动受系统/厂商限制，异常类型多，统一按启动失败处理 */
