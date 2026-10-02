@@ -26,11 +26,16 @@ object MockLocationAccess {
             // 个别厂商 ROM 的其它异常：按未授权处理
         }
         if (granted) {
+            // 两个清理调用必须各自兜底：setTestProviderEnabled 在系统位置关闭的
+            // ROM 上会抛异常，合并一个 try 会跳过 removeTestProvider，残留的
+            // GPS TestProvider 会替身真实 GPS，全局压制其它应用的定位
             try {
                 lm.setTestProviderEnabled(LocationManager.GPS_PROVIDER, false)
+            } catch (ignore: Exception) {
+            }
+            try {
                 lm.removeTestProvider(LocationManager.GPS_PROVIDER)
             } catch (ignore: Exception) {
-                // 清理失败不影响判定
             }
         }
         return granted
