@@ -35,7 +35,8 @@ fun jumpDialogFor(
         MockCheckError.MOCK_NOT_SELECTED ->
             JumpDialogState(
                 "未选择模拟位置应用",
-                "请在系统开发者选项中将本应用设置为“模拟位置信息应用”。",
+                "请在系统开发者选项中将本应用设置为“模拟位置信息应用”。" +
+                    "若已设置仍无法启动，请先开启系统“位置信息”后再试。",
                 SystemIntents.developerOptions(),
             )
 

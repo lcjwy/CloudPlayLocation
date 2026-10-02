@@ -42,8 +42,9 @@
 - **WiFi 闪回原理**：系统网络定位服务基于 WiFi 扫描（BSSID）可独立算出真实位置，部分经 FusedLocationProvider 的应用绕过 LocationManager 的 TestProvider，导致位置跳回真实位置。应用侧两层软提醒：① 启动前 WLAN 开启则 Toast 提示（不阻断）；② 设置页常驻「WiFi 闪回防护」区块，实时显示 WLAN 与系统「Wi-Fi 扫描」状态（`MockCheck.isWifiScanAlwaysAvailable`，ON_RESUME 刷新），引导关闭扫描类开关（跳 `android.settings.LOCATION_SCANNING_SETTINGS`，机型缺失回落 `ACTION_LOCATION_SOURCE_SETTINGS`）。**关闭扫描类开关无需断开 WiFi 联网**。
 
 ### 2.2 位置注入循环（MockLocationService）
-- 注册双 TestProvider：GPS（API31+ `ProviderProperties(POWER_USAGE_HIGH, ACCURACY_FINE)`，26–30 `Criteria`）+ Network（LOW/COARSE）。
-- `HandlerThread("MockLocation")` 自循环：每 interval（10–100ms，默认 100）先 Network 后 GPS 各 `setTestProviderLocation` 一次。**息屏钳制间隔 ≥1s**（SCREEN_OFF/ON 广播切换，亮屏即恢复），降低后台唤醒与 IPC。
+- 注册双 TestProvider：GPS（POWER_USAGE_HIGH/ACCURACY_FINE）+ Network（LOW/COARSE）。**统一走废弃的 10 参 `addTestProvider` 重载 + 常量**（Gogogo 同款，含 API 31+；`ProviderProperties.Builder()` 新重载在部分 ROM 行为不一致）；注册后 `isProviderEnabled` 仍报禁用时（系统位置关闭常见）补一次 `setTestProviderEnabled(true)`。
+- `HandlerThread("MockLocation")` 自循环：每 interval（10–100ms，默认 100）先 Network 后 GPS 各 `setTestProviderLocation` 一次。
+- **注入容错（系统位置关闭场景）**：`setTestProviderLocation` 抛 `SecurityException`（部分 ROM 在系统位置关闭时）**容忍并继续重试，不 stopSelf**——Gogogo 同款策略，位置开启后注入自动恢复；日志仅记每次故障首次。模拟权限探测（`MockLocationAccess.isGranted`）**先定论后清理**：`addTestProvider` 成功即已授权，清理调用的异常不参与判定，避免被误判为「未选择模拟位置应用」。
 - Location 字段：accuracy(GPS=1f/Network=50f)、altitude=55.0、speed=0、bearing=0、time、elapsedRealtimeNanos、extras(satellites=7)。
 - 运行中换点/改频率 = 重发 intent（`onStartCommand` 更新并重排循环）；服务无 BIND，状态经 companion `isAlive` 暴露。
 - `SecurityException`（模拟位置应用被取消选择）→ 停止注入并自杀。

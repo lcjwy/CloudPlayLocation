@@ -19,6 +19,7 @@ import android.os.IBinder
 import android.os.PowerManager
 import android.os.Process
 import android.os.SystemClock
+import android.util.Log
 import android.widget.Toast
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -43,6 +44,10 @@ class MockLocationService : Service() {
     private var providersAdded = false
     private var lastNotifiedLat = Double.NaN
     private var lastNotifiedLng = Double.NaN
+
+    /** 注入连续失败期间只记一次日志（恢复后复位），避免高频刷屏 */
+    @Volatile
+    private var providerLost = false
 
     /** 息屏后降低注入频率（耗电优化）；亮屏立即恢复设定值 */
     private var screenOn = true
@@ -127,7 +132,8 @@ class MockLocationService : Service() {
             lastNotifiedLat = lat
             lastNotifiedLng = lng
             true
-        } catch (ignore: Exception) {
+        } catch (e: Exception) {
+            Log.e(TAG, "startForeground failed", e)
             false
         }
 
@@ -136,7 +142,8 @@ class MockLocationService : Service() {
         providersAdded =
             try {
                 TestProviders(lm).addAll()
-            } catch (ignore: SecurityException) {
+            } catch (e: SecurityException) {
+                Log.e(TAG, "addTestProvider SecurityException", e)
                 Toast.makeText(this, R.string.mock_no_permission, Toast.LENGTH_SHORT).show()
                 false
             }
@@ -202,10 +209,14 @@ class MockLocationService : Service() {
                     extras = Bundle().apply { putInt("satellites", SATELLITES) }
                 }
             lm.setTestProviderLocation(provider, location)
-        } catch (ignore: SecurityException) {
-            // 模拟位置应用被取消选择：停止注入
-            handler?.removeCallbacks(tick)
-            stopSelf()
+            providerLost = false
+        } catch (e: SecurityException) {
+            // 部分ROM在系统位置关闭等场景抛 SecurityException：容忍并继续重试
+            // （Gogogo 同款策略；位置开启后注入自动恢复），仅首次失败记一条日志
+            if (!providerLost) {
+                Log.w(TAG, "setTestProviderLocation($provider) failed", e)
+                providerLost = true
+            }
         } catch (ignore: IllegalArgumentException) {
             // provider 未注册，跳过本次
         }
@@ -235,6 +246,7 @@ class MockLocationService : Service() {
     }
 
     companion object {
+        private const val TAG = "MockLocation"
         private const val EXTRA_LAT = "extra_lat"
         private const val EXTRA_LNG = "extra_lng"
         private const val EXTRA_INTERVAL = "extra_interval"
@@ -283,65 +295,68 @@ private class TestProviders(
 
     fun addAll(): Boolean {
         removeAll()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            addModern()
-        } else {
-            addLegacy()
-        }
-        lm.setTestProviderEnabled(LocationManager.GPS_PROVIDER, true)
-        lm.setTestProviderEnabled(LocationManager.NETWORK_PROVIDER, true)
+        addGps()
+        addNetwork()
+        enableIfDisabled(LocationManager.GPS_PROVIDER)
+        enableIfDisabled(LocationManager.NETWORK_PROVIDER)
         return true
     }
 
-    private fun addModern() {
+    /** 废弃的 10 参重载 + 常量（Gogogo 同款，含 API 31+）：Builder 新重载在部分 ROM 行为不一致 */
+    @Suppress("DEPRECATION")
+    private fun addGps() {
+        val modern = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
         lm.addTestProvider(
             LocationManager.GPS_PROVIDER,
-            ProviderProperties
-                .Builder()
-                .setHasAltitudeSupport(true)
-                .setHasSpeedSupport(true)
-                .setHasBearingSupport(true)
-                .setPowerUsage(ProviderProperties.POWER_USAGE_HIGH)
-                .setAccuracy(ProviderProperties.ACCURACY_FINE)
-                .build(),
-        )
-        lm.addTestProvider(
-            LocationManager.NETWORK_PROVIDER,
-            ProviderProperties
-                .Builder()
-                .setPowerUsage(ProviderProperties.POWER_USAGE_LOW)
-                .setAccuracy(ProviderProperties.ACCURACY_COARSE)
-                .build(),
+            false,
+            true,
+            false,
+            false,
+            true,
+            true,
+            true,
+            if (modern) {
+                ProviderProperties.POWER_USAGE_HIGH
+            } else {
+                android.location.Criteria.POWER_HIGH
+            },
+            if (modern) {
+                ProviderProperties.ACCURACY_FINE
+            } else {
+                android.location.Criteria.ACCURACY_FINE
+            },
         )
     }
 
-    private fun addLegacy() {
-        // minSdk 26：26–30 只有 Criteria 重载可用
-        @Suppress("DEPRECATION")
-        lm.addTestProvider(
-            LocationManager.GPS_PROVIDER,
-            false,
-            true,
-            false,
-            false,
-            true,
-            true,
-            false,
-            android.location.Criteria.POWER_HIGH,
-            android.location.Criteria.ACCURACY_FINE,
-        )
-        @Suppress("DEPRECATION")
+    @Suppress("DEPRECATION")
+    private fun addNetwork() {
+        val modern = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
         lm.addTestProvider(
             LocationManager.NETWORK_PROVIDER,
             true,
             false,
             true,
-            false,
-            false,
-            false,
-            false,
-            android.location.Criteria.POWER_LOW,
-            android.location.Criteria.ACCURACY_COARSE,
+            true,
+            true,
+            true,
+            true,
+            if (modern) {
+                ProviderProperties.POWER_USAGE_LOW
+            } else {
+                android.location.Criteria.POWER_LOW
+            },
+            if (modern) {
+                ProviderProperties.ACCURACY_COARSE
+            } else {
+                android.location.Criteria.ACCURACY_COARSE
+            },
         )
+    }
+
+    /** API 31+ 注册即启用；仅当系统仍报禁用时补一次显式启用（系统位置关闭时常见） */
+    private fun enableIfDisabled(provider: String) {
+        if (!lm.isProviderEnabled(provider)) {
+            lm.setTestProviderEnabled(provider, true)
+        }
     }
 }

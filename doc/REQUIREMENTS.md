@@ -79,7 +79,7 @@ FOREGROUND_SERVICE_LOCATION / FOREGROUND_SERVICE_SPECIAL_USE / SYSTEM_ALERT_WIND
 
 **启用虚拟位置前的校验链**（按序，任一失败弹引导弹窗）：
 1. 位置权限已授予（未授予 → 申请）。
-2. 本应用已被选为"模拟位置信息应用"：检测方式 = 试探性 `LocationManager.addTestProvider(GPS)` 成功即已授权（随后立即清理），`SecurityException` 则未授权 → 引导弹窗跳开发者设置页。
+2. 本应用已被选为"模拟位置信息应用"：检测方式 = 试探性 `LocationManager.addTestProvider(GPS)` 成功即已授权（随后清理探测痕迹；**清理调用的异常不影响判定**——部分 ROM 在系统位置关闭时会对其抛异常），`SecurityException` 则未授权 → 引导弹窗跳开发者设置页（文案含"若已设置仍无法启动，请先开启系统位置信息"提示）。
 3. （仅悬浮窗开启时）overlay 权限 → 跳 `ACTION_MANAGE_OVERLAY_PERMISSION`。
 4. **WiFi 提醒（软提醒，不阻断）**：WLAN 开启时系统可能基于 WiFi 扫描算出真实位置导致虚拟位置"闪回"。启动前检测 `WifiManager.isWifiEnabled`，开启则 **Toast 提示后直接继续启动**（不弹窗）。设置页另有常驻「WiFi 闪回防护」区块，引导关闭系统的「Wi-Fi 扫描」等扫描类开关（无需断开 WiFi）。
 - **不校验系统 GPS 开关**：推荐使用顺序 = 先启动虚拟位置，再手动开启系统位置（TestProvider 注入不依赖 GPS 预先开启）。
