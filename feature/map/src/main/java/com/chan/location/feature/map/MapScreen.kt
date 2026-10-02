@@ -1,6 +1,8 @@
 package com.chan.location.feature.map
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
@@ -39,6 +41,9 @@ private val DEFAULT_POINT = GeoLatLng(39.908722, 116.397499)
 
 /** 经纬度输入跳转后的默认缩放级别 */
 private const val DEFAULT_ZOOM = 16f
+
+/** 退出页面后延迟销毁地图实例，避开返回动画 */
+private const val DESTROY_DELAY_MS = 300L
 
 /** 地图页弹窗：同一时刻至多展示一个 */
 private sealed interface MapDialog {
@@ -168,6 +173,7 @@ private fun rememberMapAdapter(
 ): MapHandle {
     val context = LocalContext.current
     val state = remember { MapHandle() }
+    val destroyHandler = remember { Handler(Looper.getMainLooper()) }
     LaunchedEffect(mapAdapterFactory) {
         val setup =
             buildMapSetup(
@@ -189,8 +195,16 @@ private fun rememberMapAdapter(
     }
     DisposableEffect(Unit) {
         onDispose {
-            state.adapter?.onPause()
-            state.adapter?.onDestroy()
+            // onDestroy 的 GL/JNI 同步释放发生在返回动画期间会掉帧：延迟到动画结束后执行
+            val adapter = state.adapter
+            state.adapter = null
+            destroyHandler.postDelayed(
+                {
+                    adapter?.onPause()
+                    adapter?.onDestroy()
+                },
+                DESTROY_DELAY_MS,
+            )
         }
     }
     return state
