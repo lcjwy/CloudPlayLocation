@@ -166,6 +166,8 @@ class BaiduMapAdapter(
 
     override fun moveToMyLocation(): Boolean {
         val fix = lastFix ?: return false
+        // 与 moveCamera 一致抑制动画期间的中心回调抖动；手势起始复位保证可恢复
+        programmaticMove = true
         baiduMap.animateMapStatus(
             MapStatusUpdateFactory.newLatLngZoom(
                 LatLng(fix.latitude, fix.longitude),
