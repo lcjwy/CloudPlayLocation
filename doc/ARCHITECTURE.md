@@ -47,7 +47,7 @@
 - **注入容错（系统位置关闭场景）**：`setTestProviderLocation` 抛 `SecurityException`（部分 ROM 在系统位置关闭时）**容忍并继续重试，不 stopSelf**——系统位置开启后注入自动恢复；提示与日志整个服务周期仅一次（`apiErrorShown`，成功不复位：GPS/Network 单边交替失败时防刷屏）。模拟权限探测（`MockLocationAccess.isGranted`）**先定论后清理**：`addTestProvider` 成功即已授权，清理调用的异常不参与判定，避免被误判为「未选择模拟位置应用」。
 - Location 字段：accuracy(GPS=1f/Network=50f)、altitude=55.0、speed=0、bearing=0、time、elapsedRealtimeNanos、extras(satellites=7)。
 - 运行中换点/改频率 = 重发 intent（`onStartCommand` 更新并重排循环）；服务无 BIND，状态经 companion `isAlive` 暴露。
-- `SecurityException`（模拟位置应用被取消选择）→ 停止注入并自杀。
+- **注册阶段失败 ≠ 注入阶段失败**：`addTestProvider` 抛 `SecurityException`（模拟位置应用被取消选择）→ Toast + `MockLocationManager.onMockProvidersFailed()` 回滚开关 + stopSelf，避免「运行中」通知却永不注入的假运行态；注入阶段的 `SecurityException` 则容忍重试（见上）。
 - 双 provider 原因：部分应用只读 GPS、部分融合 Network，双注入保证一致。
 
 ### 2.3 坐标转换（:core:common CoordUtils）
@@ -66,7 +66,7 @@ MapAdapterFactory: (context, MapConfig) -> MapAdapter，由 :app 提供实现选
 ```
 - `MapConfig.source` 决定实现；未同意隐私 → :app 工厂强制回退 osmdroid。
 - 百度懒初始化：`BaiduSdkInitializer.ensureInit(context, privacyAgreed)` 幂等，仅在工厂创建百度 Adapter 时调用，先于 MapView 创建；`setAgreePrivacy(true)` + `initialize` + `setCoordType(BD09LL)`。
-- 百度显示 `wgs2bd09`、回调 `bd092wgs`；`programmaticMove` 标志抑制程序化相机移动期间的回调抖动。
+- 百度显示 `wgs2bd09`、回调 `bd092wgs`；`programmaticMove` 标志抑制程序化相机移动期间的回调抖动，手势起始（`REASON_GESTURE`）强制复位——程序化动画无回调时（已在目标点/缩放极限）标志等不到 Finish 复位，不复位会导致拖动不再回报中心点。
 - osmdroid：WGS84 直通；`Configuration` 缓存指向应用私有目录（免存储权限）；中心点回调 120ms 防抖。
 - UI（Compose）：`AndroidView` 包 MapView + 中心十字准星 Canvas 覆盖层 + 底部坐标面板 + 右侧缩放按钮，两源共用。
 
@@ -76,7 +76,7 @@ MapAdapterFactory: (context, MapConfig) -> MapAdapter，由 :app 提供实现选
 - FloatingControlService 为 specialUse FGS（manifest 声明 PROPERTY_SPECIAL_USE_FGS_SUBTYPE）。
 
 ### 2.6 状态管理与 DI
-- `MockLocationManager`（:service:mock 进程级单例）：以 `(悬浮窗开关, 运行开关, 注入频率)` 的 DataStore 组合流为唯一事实源，`reconcileOnChange` collect 后统一启停 MockLocationService/FloatingControlService；进程重启校正残留 mockEnabled。UI 与悬浮窗只调 `start(point)`/`stop()`/`tryToggleFromOverlay()`。`start`：运行中重发 intent 换点；服务已死则**直接重启**（服务被系统杀死后 mockEnabled 残留 true，仅写开关会被 distinctUntilChanged 吞掉导致点击无响应）。
+- `MockLocationManager`（:service:mock 进程级单例）：以 `(悬浮窗开关, 运行开关, 注入频率)` 的 DataStore 组合流为唯一事实源，`reconcileOnChange` collect 后统一启停 MockLocationService/FloatingControlService；进程重启校正残留 mockEnabled。UI 与悬浮窗只调 `start(point)`/`stop()`/`tryToggleFromOverlay()`。`start`：运行中重发 intent 换点；服务已死则**直接重启**（服务被系统杀死后 mockEnabled 残留 true，仅写开关会被 distinctUntilChanged 吞掉导致点击无响应）。FGS 启动失败（后台限制）经 `startServiceSafe` **回滚对应服务的开关**（启动成功才写运行开关），悬浮窗失败不误关虚拟位置。
 - Koin（4.x，仅 :app 触碰）：`di/AppModule.kt` 注册 SettingsRepository / PointRepository / MapAdapterFactory 三个单例；`LocationApplication.startKoin` 后经 `MockLocationManager.init(this, get())` 交接；MainActivity 用 `by inject()` 注入后以参数下传，feature 层保持无框架依赖。
 - 启停校验链 UI 下沉为 `:core:ui` 的 `MockStartGate`（`rememberMockStartGate`）：主页与地图页共用「权限申请 → 模拟位置/悬浮窗引导弹窗 + WiFi 闪回 Toast 软提醒」全流程，消除重复。不校验系统 GPS 开关（推荐先启动虚拟位置、再手动开系统定位）。
 
