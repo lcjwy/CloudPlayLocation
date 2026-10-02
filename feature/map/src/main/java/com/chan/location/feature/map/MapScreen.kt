@@ -259,7 +259,7 @@ private class MapController(
         handle.committed = handle.center
     }
 
-    /** 保存/收藏：名称缺省时反查地址；exitAfter 为退出选点页时的四选一保存 */
+    /** 保存/收藏：名称缺省时反查地址，两层均失败传空串（由仓库保留原名/坐标兜底）；exitAfter 为退出选点页时的四选一保存 */
     fun save(
         name: String,
         favorite: Boolean,
@@ -267,7 +267,7 @@ private class MapController(
         onExit: () -> Unit,
     ) {
         scope.launch {
-            val finalName = name.ifBlank { reverseGeocode(context, handle.adapter, center) }
+            val finalName = name.ifBlank { reverseGeocode(context, handle.adapter, center) ?: "" }
             if (favorite) {
                 repo.saveFavorite(finalName, center)
             } else {
@@ -278,13 +278,20 @@ private class MapController(
         }
     }
 
-    /** 锁定虚拟位置：校验链通过后落历史并启动注入 */
+    /** 锁定虚拟位置：校验链通过后落历史并启动注入；选中点名取落库后的最终名称 */
     fun lock(name: String) {
         gate.requestStart {
             scope.launch {
-                val finalName = name.ifBlank { reverseGeocode(context, handle.adapter, center) }
-                repo.saveHistory(finalName, center)
-                MockLocationManager.start(SelectedPoint(finalName, center.lat, center.lng))
+                val finalName =
+                    name.ifBlank {
+                        reverseGeocode(
+                            context,
+                            handle.adapter,
+                            center,
+                        ) ?: ""
+                    }
+                val saved = repo.saveHistory(finalName, center)
+                MockLocationManager.start(SelectedPoint(saved.name, center.lat, center.lng))
                 commit()
             }
         }

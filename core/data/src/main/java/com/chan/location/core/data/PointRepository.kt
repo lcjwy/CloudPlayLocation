@@ -41,8 +41,13 @@ class PointRepository(
         val now = System.currentTimeMillis()
         val eps = 0.00005
         val bd = CoordUtils.wgs2bd09(wgs)
-        val finalName = name.ifBlank { String.format(Locale.US, "%.6f, %.6f", wgs.lat, wgs.lng) }
         val existing = dao.findNear(wgs.lat - eps, wgs.lat + eps, wgs.lng - eps, wgs.lng + eps)
+        // 名称留空（反查两层均失败）：重存同位置保留原名，仅新条目用坐标兜底，
+        // 避免坐标串覆盖已有的好名称
+        val finalName =
+            name.ifBlank {
+                existing?.name ?: String.format(Locale.US, "%.6f, %.6f", wgs.lat, wgs.lng)
+            }
         return if (existing != null) {
             val updated =
                 existing.copy(

@@ -29,13 +29,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.Locale
 
-/** 反查地点名：优先当前地图源（百度反地理编码，国内命中率高），失败回退系统 Geocoder，再回退坐标文本 */
+/** 反查地点名：优先当前地图源（百度反地理编码，国内命中率高），失败回退系统 Geocoder；两层均失败返回 null，由调用方兜底 */
 @Suppress("DEPRECATION") // API 33 起废弃同步重载，但监听器式重载不含超时，保留同步用法
 internal suspend fun reverseGeocode(
     context: Context,
     adapter: MapAdapter?,
     point: GeoLatLng,
-): String {
+): String? {
     adapter?.reverseGeocode(point.lat, point.lng)?.takeIf { it.isNotBlank() }?.let { return it }
     return withContext(Dispatchers.IO) {
         runCatching {
@@ -44,7 +44,6 @@ internal suspend fun reverseGeocode(
                 ?.firstOrNull()
                 ?.getAddressLine(0)
         }.getOrNull()?.takeIf { it.isNotBlank() }
-            ?: String.format(Locale.US, "%.6f, %.6f", point.lat, point.lng)
     }
 }
 
@@ -63,7 +62,11 @@ internal fun NameDialog(
     var name by remember { mutableStateOf("") }
     var touched by remember { mutableStateOf(false) }
     LaunchedEffect(center) {
-        if (!touched) name = reverseGeocode(context, adapter, center)
+        if (!touched) {
+            name =
+                reverseGeocode(context, adapter, center)
+                    ?: String.format(Locale.US, "%.6f, %.6f", center.lat, center.lng)
+        }
     }
     AlertDialog(
         onDismissRequest = onDismiss,
