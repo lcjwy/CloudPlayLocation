@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -86,14 +87,7 @@ private fun AppNavHost(
 ) {
     NavHost(navController = navController, startDestination = Routes.HOME) {
         composable(Routes.HOME) {
-            HomeScreen(
-                pointRepository = points,
-                settingsRepository = settings,
-                onAddPoint = { navController.navigate(Routes.MAP_PLAIN) },
-                onOpenMap = { navController.navigate(Routes.MAP_PLAIN) },
-                onLocateOnMap = { navController.navigate(Routes.mapWithPoint(it.id)) },
-                onOpenSettings = { navController.navigate(Routes.SETTINGS) },
-            )
+            HomeDestination(navController, settings, points)
         }
         composable(
             route = Routes.MAP,
@@ -105,19 +99,58 @@ private fun AppNavHost(
                     },
                 ),
         ) { entry ->
-            MapScreen(
-                pointRepository = points,
-                settingsRepository = settings,
-                mapAdapterFactory = mapAdapterFactory,
-                onExit = { navController.popBackStack() },
-                focusPointId = entry.arguments?.getString("pid")?.toLongOrNull(),
-            )
+            MapDestination(entry, navController, settings, points, mapAdapterFactory)
         }
         composable(Routes.SETTINGS) {
-            SettingsScreen(
-                settingsRepository = settings,
-                onBack = { navController.popBackStack() },
-            )
+            SettingsDestination(navController, settings)
         }
     }
+}
+
+/** 主页：添加/查看走地图页（launchSingleTop 防快速双击重复压栈重量级地图实例） */
+@Composable
+private fun HomeDestination(
+    navController: NavHostController,
+    settings: SettingsRepository,
+    points: PointRepository,
+) {
+    HomeScreen(
+        pointRepository = points,
+        settingsRepository = settings,
+        onAddPoint = { navController.navigate(Routes.MAP_PLAIN) { launchSingleTop = true } },
+        onOpenMap = { navController.navigate(Routes.MAP_PLAIN) { launchSingleTop = true } },
+        onLocateOnMap = {
+            navController.navigate(Routes.mapWithPoint(it.id)) { launchSingleTop = true }
+        },
+        onOpenSettings = { navController.navigate(Routes.SETTINGS) { launchSingleTop = true } },
+    )
+}
+
+/** 地图页：pid 为可选定位点 */
+@Composable
+private fun MapDestination(
+    entry: NavBackStackEntry,
+    navController: NavHostController,
+    settings: SettingsRepository,
+    points: PointRepository,
+    mapAdapterFactory: MapAdapterFactory,
+) {
+    MapScreen(
+        pointRepository = points,
+        settingsRepository = settings,
+        mapAdapterFactory = mapAdapterFactory,
+        onExit = { navController.popBackStack() },
+        focusPointId = entry.arguments?.getString("pid")?.toLongOrNull(),
+    )
+}
+
+@Composable
+private fun SettingsDestination(
+    navController: NavHostController,
+    settings: SettingsRepository,
+) {
+    SettingsScreen(
+        settingsRepository = settings,
+        onBack = { navController.popBackStack() },
+    )
 }
