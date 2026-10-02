@@ -32,7 +32,12 @@ import java.util.Locale
  */
 class MockLocationService : Service() {
     private lateinit var lm: LocationManager
+
+    // 主线程写（onCreate/onDestroy），注入线程与广播读：volatile 保证销毁空值对 tick 可见
+    @Volatile
     private var handlerThread: HandlerThread? = null
+
+    @Volatile
     private var handler: Handler? = null
 
     private var lat = 0.0
