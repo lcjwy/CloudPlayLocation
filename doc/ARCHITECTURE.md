@@ -44,7 +44,7 @@
 ### 2.2 位置注入循环（MockLocationService）
 - 注册双 TestProvider：GPS（POWER_USAGE_HIGH/ACCURACY_FINE）+ Network（LOW/COARSE）。**统一走废弃的 10 参 `addTestProvider` 重载 + 常量**（Gogogo 同款，含 API 31+；`ProviderProperties.Builder()` 新重载在部分 ROM 行为不一致）；注册后 `isProviderEnabled` 仍报禁用时（系统位置关闭常见）补一次 `setTestProviderEnabled(true)`。
 - `HandlerThread("MockLocation")` 自循环：每 interval（10–100ms，默认 100）先 Network 后 GPS 各 `setTestProviderLocation` 一次。
-- **注入容错（系统位置关闭场景）**：`setTestProviderLocation` 抛 `SecurityException`（部分 ROM 在系统位置关闭时）**容忍并继续重试，不 stopSelf**——Gogogo 同款策略，位置开启后注入自动恢复；日志仅记每次故障首次。模拟权限探测（`MockLocationAccess.isGranted`）**先定论后清理**：`addTestProvider` 成功即已授权，清理调用的异常不参与判定，避免被误判为「未选择模拟位置应用」。
+- **注入容错（系统位置关闭场景）**：`setTestProviderLocation` 抛 `SecurityException`（部分 ROM 在系统位置关闭时）**容忍并继续重试，不 stopSelf**——Gogogo 同款策略，位置开启后注入自动恢复；故障期内仅首次 Toast（API 异常提示）+ 日志。模拟权限探测（`MockLocationAccess.isGranted`）**先定论后清理**：`addTestProvider` 成功即已授权，清理调用的异常不参与判定，避免被误判为「未选择模拟位置应用」。
 - Location 字段：accuracy(GPS=1f/Network=50f)、altitude=55.0、speed=0、bearing=0、time、elapsedRealtimeNanos、extras(satellites=7)。
 - 运行中换点/改频率 = 重发 intent（`onStartCommand` 更新并重排循环）；服务无 BIND，状态经 companion `isAlive` 暴露。
 - `SecurityException`（模拟位置应用被取消选择）→ 停止注入并自杀。

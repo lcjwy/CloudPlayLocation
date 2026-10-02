@@ -134,6 +134,7 @@ class MockLocationService : Service() {
             true
         } catch (e: Exception) {
             Log.e(TAG, "startForeground failed", e)
+            Toast.makeText(this, R.string.mock_start_failed, Toast.LENGTH_LONG).show()
             false
         }
 
@@ -212,10 +213,11 @@ class MockLocationService : Service() {
             providerLost = false
         } catch (e: SecurityException) {
             // 部分ROM在系统位置关闭等场景抛 SecurityException：容忍并继续重试
-            // （Gogogo 同款策略；位置开启后注入自动恢复），仅首次失败记一条日志
+            // （Gogogo 同款策略；位置开启后注入自动恢复），故障期内仅首次 Toast + 日志
             if (!providerLost) {
                 Log.w(TAG, "setTestProviderLocation($provider) failed", e)
                 providerLost = true
+                Toast.makeText(this, R.string.mock_api_error, Toast.LENGTH_LONG).show()
             }
         } catch (ignore: IllegalArgumentException) {
             // provider 未注册，跳过本次

@@ -3,7 +3,10 @@ package com.chan.location.service.mock
 import android.app.Application
 import android.content.Context
 import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
+import android.widget.Toast
 import com.chan.location.core.common.MockCheck
 import com.chan.location.core.common.MockCheckError
 import com.chan.location.core.data.SettingsRepository
@@ -26,6 +29,7 @@ object MockLocationManager {
     private lateinit var appCtx: Context
     private lateinit var settings: SettingsRepository
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     @Volatile
     private var current: SelectedPoint? = null
@@ -76,8 +80,13 @@ object MockLocationManager {
         try {
             appCtx.startForegroundService(intent)
         } catch (ignore: IllegalStateException) {
-            // 后台启动 FGS 被系统限制：回滚开关，UI 与悬浮窗侧已提示
+            // 后台启动 FGS 被系统限制：回滚开关并提示（scope 在 Default 线程，Toast 需主线程）
             scope.launch { settings.setMockEnabled(false) }
+            mainHandler.post {
+                Toast
+                    .makeText(appCtx, R.string.mock_start_failed, Toast.LENGTH_LONG)
+                    .show()
+            }
         }
     }
 
