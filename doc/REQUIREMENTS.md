@@ -116,6 +116,7 @@ FOREGROUND_SERVICE_LOCATION / FOREGROUND_SERVICE_SPECIAL_USE / SYSTEM_ALERT_WIND
 
 ### 3.8 隐私政策与定位 SDK
 - 首次启动弹隐私政策（本地内置文案）：**同意** → 允许懒初始化百度 SDK（`SDKInitializer.setAgreePrivacy(true)` + `LocationClient.setAgreePrivacy(true)` + `SDKInitializer.initialize` + `setCoordType(BD09LL)`），地图可用百度源并显示真实位置蓝点 + 「回到当前位置」；**不同意** → 百度 SDK 完全不初始化（百度地图与百度定位均不可用，地图源强制 osmdroid），无真实定位，初始视角用默认城市中心。
+- 政策文案必含条款：① 权限与地图数据用途（不上传位置）；② 数据仅存本机；③ **代码 90% 以上由 AI 生成**的来源声明；④ **虚拟位置风险与免责**（可被识别/可能违反平台条款/影响真实定位功能，一切后果使用者自负，开发者免责）；⑤ **使用限制**（仅供开发者测试调试与学习，勿滥用、勿分发/二次打包/商用，违规引发法律问题保留追究一切法律责任的权利）。
 - 百度初始化必须**懒加载**（不能在 Application 无条件初始化）：同意后按 DataStore 持久化状态/当次选择初始化，且必须在首个百度 MapView 创建之前完成。
 - 任何时候：有上次选点 → 初始视角为上次选点；否则按上述隐私分支。
 
