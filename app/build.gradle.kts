@@ -53,11 +53,22 @@ android {
         }
         release {
             isMinifyEnabled = true
+            isShrinkResources = true
             if (chanKeystore?.exists() == true) signingConfig = signingConfigs.getByName("chan")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+        }
+    }
+    // 仅保留中文资源，剔除 androidx/地图库自带的多语言
+    androidResources {
+        localeFilters += "zh"
+    }
+    // APK 内压缩 so（默认不压缩以加速安装加载）：交付体积优先；安装后 so 会解压，磁盘占用略增
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
         }
     }
     compileOptions {
