@@ -97,7 +97,14 @@ class MockLocationService : Service() {
     ): Int {
         readIntent(intent)
         if (lat != 0.0 || lng != 0.0) {
-            if (startForegroundSafely() && ensureProviders()) scheduleLoop()
+            val foregroundStarted = startForegroundSafely()
+            if (!foregroundStarted) {
+                // startForeground 失败必须立即停止：经 startForegroundService 拉起的服务
+                // 若 5s 内未成功 startForeground，系统会抛异常杀死进程
+                stopSelf()
+            } else if (ensureProviders()) {
+                scheduleLoop()
+            }
         } else {
             // 无有效目标点（多为 START_NOT_STICKY 场景），拒绝空转
             stopSelf()
