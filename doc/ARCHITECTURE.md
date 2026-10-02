@@ -115,7 +115,7 @@ local.properties(BAIDU_MAP_KEY, 不入库) → :app build.gradle 读取 → mani
 - DataStore 属性委托 `preferencesDataStore` 是单例约束：同文件同进程只能有一份（SettingsRepository 持 context 单例使用）。
 - `gradle-daemon-jvm.properties` 固定 JDK 21 工具链（foojay 解析）。
 - **detekt/ktlint 接入**：detekt 1.23.8 在 Gradle 9.2.1 可用（2.0 尚为 alpha）；`@Composable` 命名需 `.editorconfig` 设 `ktlint_function_naming_ignore_when_annotated_with = Composable`；`EmptyFunctionBlock` 属 `empty-blocks` 规则集（非 style）；MagicNumber 对 Compose UI 字面量是噪音，已关闭。
-- **出包命令**：正式包直接 `./gradlew release`（`app/build.gradle.kts` 的快捷任务，= assembleRelease + 自动输出**项目级** `build/outputs/named/虚拟定位_1.1.0_release.apk` 下划线命名副本）。
+- **出包命令**：正式包直接 `./gradlew release`（`app/build.gradle.kts` 的快捷任务，= assembleRelease + 自动输出**项目级** `build/outputs/named/虚拟定位_<版本>_release.apk` 下划线命名副本，版本号见 `appVersionName`）。
 - **APK 体积**（release ≈13.5MB，debug ≈31MB 仅自测）：三项手段——① `packaging.jniLibs.useLegacyPackaging = true` 让 so 在 APK 内压缩存储（百度 map so 12.6MB→5.3MB；代价是安装后 so 解压、磁盘占用略增）；② release `isShrinkResources = true`；③ `androidResources.localeFilters += "zh"` 仅保留中文（AGP9 用 localeFilters，旧版 resourceConfigurations 已换名）。debug 大是因不混淆 + dex 未裁剪，交付一律用 release。
 - **地图返回卡顿**：退出地图页时 `onDestroy` 的 GL/JNI 同步释放（百度 MapView）发生在返回动画期间会掉帧；`rememberMapAdapter` 的 onDispose 将 pause+destroy 延迟 300ms 到动画结束后执行（主线程 Handler），期间地图保持渲染。
 - **lintVital 阻断 release**：release 编译自动跑 lintVital，`ACCESS_MOCK_LOCATION` 会触发 MockLocation fatal 检查（lint 默认该权限仅限 debug 构建）；已在 manifest 该条目上加 `tools:ignore="MockLocation"` 定向豁免。
