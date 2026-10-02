@@ -62,9 +62,16 @@ object MockLocationManager {
                 Triple(f, r, i)
             }.distinctUntilChanged().collect { (floating, running, interval) ->
                 if (running && current != null) {
-                    startServiceSafe(MockLocationService.intent(appCtx, current, interval))
+                    startServiceSafe(MockLocationService.intent(appCtx, current, interval)) {
+                        settings.setMockEnabled(false)
+                    }
                     if (floating && Settings.canDrawOverlays(appCtx)) {
-                        startServiceSafe(Intent(appCtx, FloatingControlService::class.java))
+                        startServiceSafe(
+                            Intent(appCtx, FloatingControlService::class.java),
+                            R.string.float_start_failed,
+                        ) {
+                            settings.setFloatingEnabled(false)
+                        }
                     } else {
                         appCtx.stopService(Intent(appCtx, FloatingControlService::class.java))
                     }
@@ -76,19 +83,24 @@ object MockLocationManager {
         }
     }
 
-    private fun startServiceSafe(intent: Intent) {
+    /** 启动 FGS；失败时回滚对应开关并提示——哪个服务失败回滚哪个开关、提示哪个服务，
+     *  悬浮窗失败不能误关虚拟位置（scope 在 Default 线程，Toast 需主线程）。
+     *  返回是否启动成功，调用方据此决定是否写运行开关 */
+    private fun startServiceSafe(
+        intent: Intent,
+        toastRes: Int = R.string.mock_start_failed,
+        rollback: suspend () -> Unit,
+    ): Boolean =
         try {
             appCtx.startForegroundService(intent)
+            true
         } catch (ignore: IllegalStateException) {
-            // 后台启动 FGS 被系统限制：回滚开关并提示（scope 在 Default 线程，Toast 需主线程）
-            scope.launch { settings.setMockEnabled(false) }
+            scope.launch { rollback() }
             mainHandler.post {
-                Toast
-                    .makeText(appCtx, R.string.mock_start_failed, Toast.LENGTH_LONG)
-                    .show()
+                Toast.makeText(appCtx, toastRes, Toast.LENGTH_LONG).show()
             }
+            false
         }
-    }
 
     /**
      * 启动或换点：运行中直接重发 intent 换点；服务已死则直接重启。
@@ -105,15 +117,22 @@ object MockLocationManager {
                 appCtx.startService(intent)
             } catch (ignore: IllegalStateException) {
                 // 后台态裸 startService 会被系统拒绝：回落到前台服务安全启动（含失败提示）
-                startServiceSafe(intent)
+                startServiceSafe(intent) { settings.setMockEnabled(false) }
             }
         } else {
-            startServiceSafe(intent)
-            settings.setMockEnabled(true)
+            // 启动失败时 startServiceSafe 已回滚开关，不能再写 true 盖掉回滚
+            val started = startServiceSafe(intent) { settings.setMockEnabled(false) }
+            if (started) settings.setMockEnabled(true)
         }
     }
 
     fun stop() {
+        scope.launch { settings.setMockEnabled(false) }
+    }
+
+    /** 服务内 TestProvider 注册失败（模拟位置应用被取消选择等）：
+     *  服务会自行 stopSelf，这里回滚开关使 UI 与实际一致，不留假运行态 */
+    fun onMockProvidersFailed() {
         scope.launch { settings.setMockEnabled(false) }
     }
 

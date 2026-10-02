@@ -104,6 +104,11 @@ class MockLocationService : Service() {
                 stopSelf()
             } else if (ensureProviders()) {
                 scheduleLoop()
+            } else {
+                // TestProvider 注册失败（多为模拟位置应用被取消选择）：回滚开关并停止，
+                // 避免留下"运行中"通知却永不注入的假运行态
+                MockLocationManager.onMockProvidersFailed()
+                stopSelf()
             }
         } else {
             // 无有效目标点（多为 START_NOT_STICKY 场景），拒绝空转
