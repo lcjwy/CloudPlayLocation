@@ -30,6 +30,10 @@ class FloatingButtonView(
     private val sizePx = (BUTTON_SIZE_DP * density).toInt()
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
 
+    /** 拖动范围钳制到屏幕内，避免按钮被拖出边界后无法找回 */
+    private val maxX = (resources.displayMetrics.widthPixels - sizePx).coerceAtLeast(0)
+    private val maxY = (resources.displayMetrics.heightPixels - sizePx).coerceAtLeast(0)
+
     private val bgPaint =
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = 0xEE263238.toInt()
@@ -111,8 +115,8 @@ class FloatingButtonView(
                 }
                 if (dragging) {
                     params?.let { lp ->
-                        lp.x = (startLpX + dx).toInt().coerceAtLeast(0)
-                        lp.y = (startLpY + dy).toInt().coerceAtLeast(0)
+                        lp.x = (startLpX + dx).toInt().coerceIn(0, maxX)
+                        lp.y = (startLpY + dy).toInt().coerceIn(0, maxY)
                         windowManager?.updateViewLayout(this, lp)
                     }
                 }
@@ -128,6 +132,12 @@ class FloatingButtonView(
         handler.removeCallbacks(progressTicker)
         progress = 0f
         invalidate()
+    }
+
+    override fun onDetachedFromWindow() {
+        // 视图被移除时清掉挂起的长按/进度回调，防止脱离窗口后仍触发启停
+        cancelPress()
+        super.onDetachedFromWindow()
     }
 
     override fun onDraw(canvas: Canvas) {
