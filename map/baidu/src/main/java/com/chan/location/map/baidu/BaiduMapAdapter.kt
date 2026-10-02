@@ -47,7 +47,13 @@ class BaiduMapAdapter(
             override fun onMapStatusChangeStart(
                 status: MapStatus?,
                 reason: Int,
-            ) {}
+            ) {
+                // 程序化动画若无回调（已在目标点/缩放极限时），标志位等不到 Finish 复位；
+                // 手势起始强制解除抑制，保证用户拖动始终回报中心点
+                if (reason == BaiduMap.OnMapStatusChangeListener.REASON_GESTURE) {
+                    programmaticMove = false
+                }
+            }
 
             override fun onMapStatusChange(status: MapStatus?) {
                 if (!programmaticMove) status.report()

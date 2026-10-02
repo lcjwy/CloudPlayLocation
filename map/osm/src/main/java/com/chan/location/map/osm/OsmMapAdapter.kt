@@ -98,8 +98,9 @@ class OsmMapAdapter(
         lng: Double,
         zoom: Float,
     ) {
-        mapView.controller.animateTo(GeoPoint(lat, lng))
+        // 先设缩放再动画：顺序相反会让 setZoom 中断进行中的平移动画
         mapView.controller.setZoom(zoom.toDouble())
+        mapView.controller.animateTo(GeoPoint(lat, lng))
         onCenterChanged?.invoke(lat, lng)
     }
 
