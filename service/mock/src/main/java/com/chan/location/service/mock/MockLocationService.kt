@@ -45,9 +45,10 @@ class MockLocationService : Service() {
     private var lastNotifiedLat = Double.NaN
     private var lastNotifiedLng = Double.NaN
 
-    /** 注入连续失败期间只记一次日志（恢复后复位），避免高频刷屏 */
+    /** 注入 API 异常提示/日志闸门：整个服务周期只提示一次（成功不复位，
+     *  GPS/Network 单边失败交替时避免每个注入周期都 Toast 刷屏） */
     @Volatile
-    private var providerLost = false
+    private var apiErrorShown = false
 
     /** 息屏后降低注入频率（耗电优化）；亮屏立即恢复设定值 */
     private var screenOn = true
@@ -210,13 +211,12 @@ class MockLocationService : Service() {
                     extras = Bundle().apply { putInt("satellites", SATELLITES) }
                 }
             lm.setTestProviderLocation(provider, location)
-            providerLost = false
         } catch (e: SecurityException) {
             // 部分ROM在系统位置关闭等场景抛 SecurityException：容忍并继续重试
-            // （Gogogo 同款策略；位置开启后注入自动恢复），故障期内仅首次 Toast + 日志
-            if (!providerLost) {
+            // （系统位置开启后注入自动恢复）；提示与日志整个服务周期仅一次
+            if (!apiErrorShown) {
                 Log.w(TAG, "setTestProviderLocation($provider) failed", e)
-                providerLost = true
+                apiErrorShown = true
                 Toast.makeText(this, R.string.mock_api_error, Toast.LENGTH_LONG).show()
             }
         } catch (ignore: IllegalArgumentException) {
@@ -355,10 +355,14 @@ private class TestProviders(
         )
     }
 
-    /** API 31+ 注册即启用；仅当系统仍报禁用时补一次显式启用（系统位置关闭时常见） */
+    /** API 31+ 注册即启用；仅当系统仍报禁用时补一次显式启用（系统位置关闭常见）。
+     *  启用调用在部分 ROM 上会抛异常：容忍跳过，注入循环自身具备容错与一次性提示 */
     private fun enableIfDisabled(provider: String) {
         if (!lm.isProviderEnabled(provider)) {
-            lm.setTestProviderEnabled(provider, true)
+            try {
+                lm.setTestProviderEnabled(provider, true)
+            } catch (ignore: SecurityException) {
+            }
         }
     }
 }

@@ -91,7 +91,7 @@ FOREGROUND_SERVICE_LOCATION / FOREGROUND_SERVICE_SPECIAL_USE / SYSTEM_ALERT_WIND
   - **耗电优化**：息屏后注入间隔钳制到 ≥1s（亮屏立即恢复设定值）；百度蓝点定位 5s 一次且地图页离开前台即停止，避免后台持续 GPS/WiFi 扫描。
   - Location 字段：accuracy、altitude（默认 55.0）、bearing、speed、`System.currentTimeMillis()`、`elapsedRealtimeNanos()`、extras（`satellites=7`）。
   - 通知：显示当前坐标，点击回 MainActivity；停止时 removeTestProvider 双 provider + stopForeground。
-  - **异常提示**：设置/注入过程异常必须反馈用户，不静默——注入 `SecurityException`（故障期内仅首次）Toast「模拟位置API异常，请检查模拟位置应用选择或系统位置开关」；前台服务启动失败与后台启动受限均 Toast「服务启动失败」。
+  - **异常提示**：设置/注入过程异常必须反馈用户，不静默——首页卡片启动路径的异常（注册权限缺失、前台服务启动失败、后台启动受限）即时 Toast；循环注入的 `SecurityException` 容忍重试（系统位置可不开，开启后自动恢复），Toast **整个服务周期仅一次**（防 GPS/Network 单边交替失败刷屏）。
 - `FloatingControlService`：前台服务 `foregroundServiceType="specialUse"`，仅在悬浮窗开关开启时运行，持有悬浮按钮，最小化通知（静音渠道）。
 - 设备重启后**不自动恢复**虚拟位置（不引入开机广播权限）；主页保留选中点显示，开关置关。
 
