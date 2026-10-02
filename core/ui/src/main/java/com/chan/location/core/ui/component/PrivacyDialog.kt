@@ -16,7 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 /** 隐私政策全文弹窗：首启与设置页复查共用；onDismiss 传 null 表示不可点外部关闭 */
-private const val PRIVACY_INTRO = "欢迎使用虚拟定位。在使用前，请阅读并确认以下内容："
+private const val PRIVACY_INTRO = "欢迎使用云游。在使用前，请阅读并确认以下内容："
 
 @Composable
 fun PrivacyPolicyDialog(

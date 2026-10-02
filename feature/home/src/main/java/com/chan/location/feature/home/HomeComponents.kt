@@ -58,7 +58,7 @@ internal fun HomeHeader(onOpenSettings: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            "虚拟定位",
+            "云游",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.weight(1f),

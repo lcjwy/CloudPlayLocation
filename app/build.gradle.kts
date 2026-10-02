@@ -13,9 +13,9 @@ val localProps =
         if (file.exists()) file.inputStream().use { load(it) }
     }
 
-// 输出 APK 命名（下划线连接，不带空格）：虚拟定位_版本_构建类型.apk
+// 输出 APK 命名（下划线连接，不带空格）：云游_版本_构建类型.apk
 val appVersionName = "1.2.0"
-val appName = "虚拟定位"
+val appName = "云游"
 
 android {
     namespace = "com.chan.location"
@@ -108,7 +108,7 @@ tasks.register("release") {
     description = "编译签名正式版 APK（等价 assembleRelease，含下划线命名副本输出）"
     dependsOn("assembleRelease")
     doLast {
-        logger.lifecycle("正式包输出：build/outputs/named/${appName}_${appVersionName}_release.apk")
+        logger.lifecycle("正式包输出：build/outputs/apk/${appName}_${appVersionName}_release.apk")
     }
 }
 

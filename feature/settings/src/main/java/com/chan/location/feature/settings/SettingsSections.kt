@@ -177,7 +177,7 @@ internal fun AboutSection(
     HorizontalDivider()
     SettingItem(
         title = "关于",
-        subtitle = "虚拟定位 v$versionName · 注入坐标为 WGS84，百度显示自动转 BD09",
+        subtitle = "云游 v$versionName · 注入坐标为 WGS84，百度显示自动转 BD09",
         onClick = {},
     )
     HorizontalDivider()
