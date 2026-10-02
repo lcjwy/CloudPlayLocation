@@ -12,6 +12,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,14 +45,14 @@ fun HomeScreen(
     val data = homeData(pointRepository, settingsRepository)
     val gate =
         rememberMockStartGate(
-            overlayRequired = { data.floatingEnabled },
+            overlayRequired = { data.floatingEnabled.value },
             permissionDeniedMessage = "需要位置权限才能继续",
         )
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val controller =
         remember(gate) {
-            HomeController(context, scope, gate, pointRepository) { data.selected }
+            HomeController(context, scope, gate, pointRepository) { data.selected.value }
         }
     var tab by rememberSaveable { mutableStateOf(0) }
     val selection = remember { HomeSelectionState() }
@@ -65,10 +66,10 @@ fun HomeScreen(
             selection.exit()
             tab = it
         },
-        history = data.history,
-        favorites = data.favorites,
-        selected = data.selected,
-        running = data.running,
+        history = data.history.value,
+        favorites = data.favorites.value,
+        selected = data.selected.value,
+        running = data.running.value,
         selection = selection,
         onRequestDelete = { selection.pendingDelete = true },
         onAddPoint = onAddPoint,
@@ -80,29 +81,34 @@ fun HomeScreen(
     gate.Dialogs()
 }
 
-/** 主页数据流聚合：列表、选中点、运行态与悬浮窗开关 */
+/**
+ * 主页数据流聚合。持有 State 而非取值快照：gate/controller 被 remember，
+ * 闭包捕获的是首帧 HomeData 实例，若存值则永远读到初始值（selected=null），
+ * 出现"卡片已显示位置、开关却提示请先选择位置"的过期读。
+ */
 private class HomeData(
-    val history: List<SavedPoint>,
-    val favorites: List<SavedPoint>,
-    val selected: SelectedPoint?,
-    val running: Boolean,
-    val floatingEnabled: Boolean,
+    val history: State<List<SavedPoint>>,
+    val favorites: State<List<SavedPoint>>,
+    val selected: State<SelectedPoint?>,
+    val running: State<Boolean>,
+    val floatingEnabled: State<Boolean>,
 )
 
 @Composable
 private fun homeData(
     points: PointRepository,
     settings: SettingsRepository,
-): HomeData {
-    val history by points.history().collectAsStateWithLifecycle(emptyList())
-    val favorites by points.favorites().collectAsStateWithLifecycle(emptyList())
-    val selected by settings.selectedPoint.collectAsStateWithLifecycle(initialValue = null)
-    val running by MockLocationManager.running.collectAsStateWithLifecycle(initialValue = false)
-    val floatingEnabled by settings.floatingEnabled.collectAsStateWithLifecycle(
-        initialValue = false,
+): HomeData =
+    HomeData(
+        history = points.history().collectAsStateWithLifecycle(emptyList()),
+        favorites = points.favorites().collectAsStateWithLifecycle(emptyList()),
+        selected = settings.selectedPoint.collectAsStateWithLifecycle(initialValue = null),
+        running = MockLocationManager.running.collectAsStateWithLifecycle(initialValue = false),
+        floatingEnabled =
+            settings.floatingEnabled.collectAsStateWithLifecycle(
+                initialValue = false,
+            ),
     )
-    return HomeData(history, favorites, selected, running, floatingEnabled)
-}
 
 /** 多选删除确认：确认后批量删除并退出多选 */
 @Composable
