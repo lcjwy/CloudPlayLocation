@@ -11,3 +11,7 @@ android {
             }
     }
 }
+
+dependencies {
+    testImplementation(libs.junit4)
+}
