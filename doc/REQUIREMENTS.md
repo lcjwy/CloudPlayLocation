@@ -2,7 +2,7 @@
 
 > 项目：`E:\Code\DemoCode\Android\Location`（包名 `com.chan.location`）
 > 示例项目（移植来源）：`E:\Code\fromGit\android\Gogogo`
-> 本文档为唯一需求基准，配套 `doc/ARCHITECTURE.md`（架构与核心逻辑）。实施前请通读两份文档。
+> 本文档为唯一需求基准，配套 `doc/ARCHITECTURE.md`（架构与核心逻辑）与 `doc/FEATURES.md`（功能模块文档）；项目概览与构建指引见根目录 `README.md`。实施前请通读各文档。
 
 ## 1. 项目背景与目标
 
