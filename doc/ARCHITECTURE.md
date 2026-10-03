@@ -65,10 +65,11 @@ MapAdapter（一律 WGS84 出入）：
 MapAdapterFactory: (context, MapConfig) -> MapAdapter，由 :app 提供实现选择
 ```
 - `MapConfig.source` 决定实现；未同意隐私 → :app 工厂强制回退 osmdroid。
+- `onCenterChanged`/`onZoomChanged` 双回调：百度在状态监听器统一回报（程序化动画期间抑制中心、Finish 无条件补报，保证缩放按钮后比例尺刷新）；OSM 经 MapListener 120ms 防抖回报。
 - 百度懒初始化：`BaiduSdkInitializer.ensureInit(context, privacyAgreed)` 幂等，仅在工厂创建百度 Adapter 时调用，先于 MapView 创建；`setAgreePrivacy(true)` + `initialize` + `setCoordType(BD09LL)`。
 - 百度显示 `wgs2bd09`、回调 `bd092wgs`；`programmaticMove` 标志抑制程序化相机移动期间的回调抖动，手势起始（`REASON_GESTURE`）强制复位——程序化动画无回调时（已在目标点/缩放极限）标志等不到 Finish 复位，不复位会导致拖动不再回报中心点。
 - osmdroid：WGS84 直通；`Configuration` 缓存指向应用私有目录（免存储权限）；中心点回调 120ms 防抖。
-- UI（Compose）：`AndroidView` 包 MapView + 中心十字准星 Canvas 覆盖层 + 底部坐标面板 + 右侧缩放按钮，两源共用。
+- UI（Compose）：`AndroidView` 包 MapView + 中心十字准星 Canvas 覆盖层 + 底部坐标面板 + 右侧缩放按钮 + 标题栏下方比例尺（`MapScaleBar.kt`，墨卡托米/像素公式实时换算），两源共用。入场缩放分级：默认 zoom 17（约 200m 级），带明确目标点（卡片点击/条目定位，路由 `close` 参数或 pid）zoom 20（约 10m 级）。
 
 ### 2.5 悬浮窗手势（FloatingButtonView + FloatingControlService）
 - `TYPE_APPLICATION_OVERLAY` + NOT_FOCUSABLE|NOT_TOUCH_MODAL，rawX/rawY 差值拖动 + `updateViewLayout`。

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -50,6 +51,7 @@ private val MY_LOCATION_TINT = Color(0xFF2196F3)
 internal fun MapSurface(
     adapter: MapAdapter?,
     center: GeoLatLng,
+    zoom: Float,
     unsaved: Boolean,
     myLocationEnabled: Boolean,
     onBack: () -> Unit,
@@ -70,6 +72,18 @@ internal fun MapSurface(
             onLocate = onLocate,
             modifier = Modifier.align(Alignment.TopCenter),
         )
+        // 标题栏下方右侧：比例尺随缩放/纬度实时变化
+        if (adapter != null) {
+            ScaleBar(
+                center = center,
+                zoom = zoom,
+                modifier =
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .statusBarsPadding()
+                        .padding(top = 72.dp, end = 16.dp),
+            )
+        }
         ZoomControls(
             onZoomIn = { adapter?.zoomIn() },
             onZoomOut = { adapter?.zoomOut() },

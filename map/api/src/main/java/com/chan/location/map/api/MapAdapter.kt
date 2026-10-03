@@ -14,6 +14,9 @@ interface MapAdapter {
     /** 中心点变化回调（WGS84）：拖动、缩放、移动相机时触发 */
     var onCenterChanged: ((lat: Double, lng: Double) -> Unit)?
 
+    /** 缩放级别变化回调：拖动/双指缩放/程序化缩放结束时触发，供比例尺显示 */
+    var onZoomChanged: ((zoom: Float) -> Unit)?
+
     val currentZoom: Float
 
     fun moveCamera(

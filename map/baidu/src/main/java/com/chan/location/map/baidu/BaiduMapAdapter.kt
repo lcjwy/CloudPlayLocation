@@ -36,6 +36,8 @@ class BaiduMapAdapter(
 
     override var onCenterChanged: ((lat: Double, lng: Double) -> Unit)? = null
 
+    override var onZoomChanged: ((zoom: Float) -> Unit)? = null
+
     override val view: View get() = mapView
 
     override val currentZoom: Float get() = baiduMap.mapStatus.zoom
@@ -60,17 +62,17 @@ class BaiduMapAdapter(
             }
 
             override fun onMapStatusChangeFinish(status: MapStatus?) {
-                if (programmaticMove) {
-                    programmaticMove = false
-                } else {
-                    status.report()
-                }
+                programmaticMove = false
+                // Finish 无条件补报：程序化动画（换点/缩放按钮）期间被抑制的
+                // 终点中心与缩放级别需落到 UI（比例尺依赖后者）；值未变时 UI 侧幂等
+                status.report()
             }
 
             private fun MapStatus?.report() {
                 val s = this ?: return
                 val wgs = CoordUtils.bd092wgs(GeoLatLng(s.target.latitude, s.target.longitude))
                 onCenterChanged?.invoke(wgs.lat, wgs.lng)
+                onZoomChanged?.invoke(s.zoom)
             }
         }
 
@@ -98,6 +100,7 @@ class BaiduMapAdapter(
             ),
         )
         onCenterChanged?.invoke(lat, lng)
+        onZoomChanged?.invoke(zoom)
     }
 
     override fun zoomIn() {

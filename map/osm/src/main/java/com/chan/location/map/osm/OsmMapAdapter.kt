@@ -30,6 +30,8 @@ class OsmMapAdapter(
 
     override var onCenterChanged: ((lat: Double, lng: Double) -> Unit)? = null
 
+    override var onZoomChanged: ((zoom: Float) -> Unit)? = null
+
     override val view: View get() = mapView
 
     override val currentZoom: Float get() = mapView.zoomLevelDouble.toFloat()
@@ -91,6 +93,7 @@ class OsmMapAdapter(
     private fun reportCenter() {
         val center = mapView.mapCenter as? GeoPoint ?: return
         onCenterChanged?.invoke(center.latitude, center.longitude)
+        onZoomChanged?.invoke(mapView.zoomLevelDouble.toFloat())
     }
 
     override fun moveCamera(
@@ -102,6 +105,7 @@ class OsmMapAdapter(
         mapView.controller.setZoom(zoom.toDouble())
         mapView.controller.animateTo(GeoPoint(lat, lng))
         onCenterChanged?.invoke(lat, lng)
+        onZoomChanged?.invoke(zoom)
     }
 
     override fun zoomIn() {

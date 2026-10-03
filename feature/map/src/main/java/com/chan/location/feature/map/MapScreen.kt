@@ -5,10 +5,6 @@ import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.Column
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -39,24 +35,11 @@ import kotlinx.coroutines.launch
 /** 无选点时的默认视角（北京，WGS84） */
 private val DEFAULT_POINT = GeoLatLng(39.908722, 116.397499)
 
-/** 经纬度输入跳转后的默认缩放级别 */
-private const val DEFAULT_ZOOM = 16f
+/** 点虚拟位置进入的近景缩放级别（比例尺约 10m 级） */
+private const val CLOSE_ZOOM = 20f
 
 /** 退出页面后延迟销毁地图实例，避开返回动画 */
 private const val DESTROY_DELAY_MS = 300L
-
-/** 地图页弹窗：同一时刻至多展示一个 */
-private sealed interface MapDialog {
-    data object LatLng : MapDialog
-
-    data object Lock : MapDialog
-
-    data class Save(
-        val favorite: Boolean,
-    ) : MapDialog
-
-    data object Exit : MapDialog
-}
 
 @Composable
 fun MapScreen(
@@ -65,6 +48,7 @@ fun MapScreen(
     mapAdapterFactory: MapAdapterFactory,
     onExit: () -> Unit,
     focusPointId: Long? = null,
+    closeUp: Boolean = false,
 ) {
     val scope = rememberCoroutineScope()
 
@@ -77,7 +61,13 @@ fun MapScreen(
             permissionDeniedMessage = "需要位置权限才能锁定位置",
         )
     val handle =
-        rememberMapAdapter(settingsRepository, mapAdapterFactory, pointRepository, focusPointId)
+        rememberMapAdapter(
+            settingsRepository,
+            mapAdapterFactory,
+            pointRepository,
+            focusPointId,
+            closeUp,
+        )
     val adapter = handle.adapter
     val unsaved = !handle.center.nearlyEquals(handle.committed)
     val context = LocalContext.current
@@ -103,6 +93,7 @@ private fun MapScreenContent(
     MapSurface(
         adapter = adapter,
         center = center,
+        zoom = handle.zoom,
         unsaved = unsaved,
         myLocationEnabled = handle.myLocationEnabled,
         onBack = { if (unsaved) controller.dialog = MapDialog.Exit else onExit() },
@@ -130,39 +121,6 @@ private fun MapScreenContent(
     }
 }
 
-/** 条目定位跳转确认：使用该点启用注入，或仅留在地图查看 */
-@Composable
-private fun AskUseDialog(
-    point: SavedPoint,
-    onUse: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("定位到该点") },
-        text = { Text("已定位到「${point.name.ifBlank { "未命名位置" }}」，是否将其设为虚拟位置？") },
-        confirmButton = { TextButton(onClick = onUse) { Text("使用该点") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("仅查看") } },
-    )
-}
-
-@Composable
-private fun MapDialogHost(
-    controller: MapController,
-    center: GeoLatLng,
-    adapter: MapAdapter?,
-    onExit: () -> Unit,
-) {
-    val onDismiss = { controller.dialog = null }
-    when (val dialog = controller.dialog) {
-        MapDialog.LatLng -> LatLngJumpDialog(center, adapter, onDismiss)
-        MapDialog.Lock -> LockNameDialog(center, adapter, controller::lock, onDismiss)
-        is MapDialog.Save -> SaveNameDialog(dialog.favorite, center, adapter, controller, onExit)
-        MapDialog.Exit -> ExitUnsavedDialog(controller, onExit)
-        null -> Unit
-    }
-}
-
 /** 创建并持有地图实例与选点状态：初始视角优先定位跳转点、其次上次选点，未同意隐私强制 OSM */
 @Composable
 private fun rememberMapAdapter(
@@ -170,6 +128,7 @@ private fun rememberMapAdapter(
     mapAdapterFactory: MapAdapterFactory,
     pointRepository: PointRepository,
     focusPointId: Long?,
+    closeUp: Boolean,
 ): MapHandle {
     val context = LocalContext.current
     val state = remember { MapHandle() }
@@ -182,16 +141,9 @@ private fun rememberMapAdapter(
                 mapAdapterFactory,
                 pointRepository,
                 focusPointId,
+                closeUp,
             )
-        setup.adapter.onCenterChanged = { lat, lng ->
-            state.center = GeoLatLng(lat, lng)
-        }
-        setup.adapter.onResume()
-        state.adapter = setup.adapter
-        state.myLocationEnabled = setup.myLocationEnabled
-        state.center = setup.initial
-        state.committed = setup.initial
-        state.askUse = setup.focus
+        applySetup(setup, state)
     }
     DisposableEffect(Unit) {
         onDispose {
@@ -210,10 +162,31 @@ private fun rememberMapAdapter(
     return state
 }
 
-/** 地图初始装配结果：适配器实例、初始视角与蓝点开关 */
+/** 装配落位：回调接线 + 初始状态写入（中心/提交点/缩放/待确认点位） */
+private fun applySetup(
+    setup: MapSetup,
+    state: MapHandle,
+) {
+    setup.adapter.onCenterChanged = { lat, lng ->
+        state.center = GeoLatLng(lat, lng)
+    }
+    setup.adapter.onZoomChanged = { zoom ->
+        state.zoom = zoom
+    }
+    setup.adapter.onResume()
+    state.adapter = setup.adapter
+    state.myLocationEnabled = setup.myLocationEnabled
+    state.center = setup.initial
+    state.committed = setup.initial
+    state.zoom = setup.initialZoom
+    state.askUse = setup.focus
+}
+
+/** 地图初始装配结果：适配器实例、初始视角/缩放与蓝点开关 */
 private class MapSetup(
     val adapter: MapAdapter,
     val initial: GeoLatLng,
+    val initialZoom: Float,
     val myLocationEnabled: Boolean,
     val focus: SavedPoint?,
 )
@@ -224,6 +197,7 @@ private suspend fun buildMapSetup(
     factory: MapAdapterFactory,
     repo: PointRepository,
     focusPointId: Long?,
+    closeUp: Boolean,
 ): MapSetup {
     val source = settings.mapSource.first()
     val privacy = settings.privacyAgreed.first() == true
@@ -233,6 +207,13 @@ private suspend fun buildMapSetup(
         focus?.let { GeoLatLng(it.wgsLat, it.wgsLng) }
             ?: selected?.let { GeoLatLng(it.wgsLat, it.wgsLng) }
             ?: DEFAULT_POINT
+    // 带明确目标点（卡片点击/条目定位）用近景；空白选点用默认级
+    val initialZoom =
+        if (closeUp || focus != null) {
+            CLOSE_ZOOM
+        } else {
+            DEFAULT_ZOOM
+        }
     val withMyLocation = privacy && MockCheck.hasLocationPermission(context)
     val adapter =
         factory.create(
@@ -241,24 +222,26 @@ private suspend fun buildMapSetup(
                 source = if (privacy) source else MapSource.OSM,
                 lat = initial.lat,
                 lng = initial.lng,
+                zoom = initialZoom,
                 myLocationEnabled = withMyLocation,
                 privacyAgreed = privacy,
             ),
         )
-    return MapSetup(adapter, initial, withMyLocation, focus)
+    return MapSetup(adapter, initial, initialZoom, withMyLocation, focus)
 }
 
 /** 地图实例 + 选点状态；askUse 为条目定位跳转带来的待确认点位 */
-private class MapHandle {
+internal class MapHandle {
     var adapter by mutableStateOf<MapAdapter?>(null)
     var myLocationEnabled by mutableStateOf(false)
     var center by mutableStateOf(DEFAULT_POINT)
     var committed by mutableStateOf(DEFAULT_POINT)
+    var zoom by mutableStateOf(DEFAULT_ZOOM)
     var askUse by mutableStateOf<SavedPoint?>(null)
 }
 
 /** 地图页操作：弹窗流转、保存/收藏、锁定并启动注入 */
-private class MapController(
+internal class MapController(
     private val context: Context,
     private val scope: CoroutineScope,
     private val repo: PointRepository,
@@ -322,97 +305,4 @@ private class MapController(
     }
 }
 
-@Composable
-private fun LatLngJumpDialog(
-    current: GeoLatLng,
-    adapter: MapAdapter?,
-    onDismiss: () -> Unit,
-) {
-    LatLngInputDialog(
-        current = current,
-        onConfirm = { target ->
-            adapter?.moveCamera(target.lat, target.lng, adapter?.currentZoom ?: DEFAULT_ZOOM)
-            onDismiss()
-        },
-        onDismiss = onDismiss,
-    )
-}
-
-@Composable
-private fun LockNameDialog(
-    center: GeoLatLng,
-    adapter: MapAdapter?,
-    onLock: (String) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    NameDialog(
-        title = "锁定虚拟位置",
-        message = "将该位置设为虚拟位置并开始注入，同时记录到历史。",
-        center = center,
-        adapter = adapter,
-        confirmText = "锁定",
-        onConfirm = { name ->
-            onDismiss()
-            onLock(name)
-        },
-        onDismiss = onDismiss,
-    )
-}
-
-@Composable
-private fun SaveNameDialog(
-    favorite: Boolean,
-    center: GeoLatLng,
-    adapter: MapAdapter?,
-    controller: MapController,
-    onExit: () -> Unit,
-) {
-    NameDialog(
-        title = if (favorite) "收藏该位置" else "保存到历史",
-        message = null,
-        center = center,
-        adapter = adapter,
-        confirmText = "保存",
-        onConfirm = { name ->
-            controller.dialog = null
-            controller.save(name, favorite, exitAfter = false, onExit = onExit)
-        },
-        onDismiss = { controller.dialog = null },
-    )
-}
-
-/** 未保存退出四选一 */
-@Composable
-private fun ExitUnsavedDialog(
-    controller: MapController,
-    onExit: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = { controller.dialog = null },
-        title = { Text("退出选点") },
-        text = { Text("当前选点尚未保存，是否保存？") },
-        confirmButton = {
-            Column {
-                TextButton(
-                    onClick = {
-                        controller.dialog = null
-                        controller.save("", false, true, onExit)
-                    },
-                ) { Text("保存到历史") }
-                TextButton(
-                    onClick = {
-                        controller.dialog = null
-                        controller.save("", true, true, onExit)
-                    },
-                ) { Text("保存并收藏") }
-                TextButton(
-                    onClick = {
-                        controller.dialog = null
-                        onExit()
-                    },
-                ) { Text("不保存") }
-                TextButton(onClick = { controller.dialog = null }) { Text("取消") }
-            }
-        },
-    )
-}
+/** 弹窗族与弹窗路由见 MapDialogs.kt */
