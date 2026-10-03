@@ -1,4 +1,6 @@
 import com.android.build.api.artifact.SingleArtifact
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Properties
 
 plugins {
@@ -13,9 +15,12 @@ val localProps =
         if (file.exists()) file.inputStream().use { load(it) }
     }
 
-// 输出 APK 命名（下划线连接，不带空格）：云游_版本_构建类型.apk
+// 输出 APK 命名（下划线连接，不带空格）：云游_版本_年月日_时分秒_构建类型.apk
 val appVersionName = "1.2.0"
 val appName = "云游"
+
+/** APK 文件名时间戳：年月日_时分秒（本机时区） */
+private val APK_STAMP = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")
 
 android {
     namespace = "com.chan.location"
@@ -92,11 +97,14 @@ androidComponents {
         val namedDir = rootProject.layout.buildDirectory.dir("outputs/named")
         tasks.register<Copy>(taskName) {
             group = "build"
-            description = "输出下划线命名的 APK 副本（交付用，位于项目级 build 目录）"
+            description = "输出带时间戳的下划线命名 APK 副本（交付用，位于项目级 build 目录）"
             from(apkDir)
             include("*.apk")
             into(namedDir)
-            rename { "${appName}_${appVersionName}_$variantName.apk" }
+            // rename 在任务执行期逐文件求值，时间取构建时刻而非配置时刻（daemon 下配置期值会过期）
+            rename {
+                "${appName}_${appVersionName}_${APK_STAMP.format(LocalDateTime.now())}_$variantName.apk"
+            }
         }
         tasks.matching { it.name == "assemble$cap" }.configureEach { finalizedBy(taskName) }
     }
@@ -107,9 +115,11 @@ tasks.register("release") {
     group = "build"
     description = "编译签名正式版 APK（等价 assembleRelease，含下划线命名副本输出）"
     dependsOn("assembleRelease")
-    doLast {
-        logger.lifecycle("正式包输出：build/outputs/apk/${appName}_${appVersionName}_release.apk")
-    }
+        doLast {
+            logger.lifecycle(
+                "正式包输出：build/outputs/named/${appName}_${appVersionName}_<年月日_时分秒>_release.apk",
+            )
+        }
 }
 
 dependencies {
