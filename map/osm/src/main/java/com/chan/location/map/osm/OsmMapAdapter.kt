@@ -110,10 +110,13 @@ class OsmMapAdapter(
 
     override fun zoomIn() {
         mapView.controller.zoomIn()
+        // 不依赖 ZoomEvent：动画结束后由防抖上报刷新比例尺
+        scheduleReport()
     }
 
     override fun zoomOut() {
         mapView.controller.zoomOut()
+        scheduleReport()
     }
 
     override fun setMyLocationEnabled(enabled: Boolean) {
