@@ -20,7 +20,7 @@ val appVersionName = "1.2.0"
 val appName = "云游"
 
 /** APK 文件名时间戳：年月日_时分秒（本机时区） */
-private val APK_STAMP = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")
+private val apkStampFormat = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")
 
 android {
     namespace = "com.chan.location"
@@ -103,7 +103,9 @@ androidComponents {
             into(namedDir)
             // rename 在任务执行期逐文件求值，时间取构建时刻而非配置时刻（daemon 下配置期值会过期）
             rename {
-                "${appName}_${appVersionName}_${APK_STAMP.format(LocalDateTime.now())}_$variantName.apk"
+                "${appName}_${appVersionName}_${apkStampFormat.format(
+                    LocalDateTime.now(),
+                )}_$variantName.apk"
             }
         }
         tasks.matching { it.name == "assemble$cap" }.configureEach { finalizedBy(taskName) }
@@ -115,11 +117,11 @@ tasks.register("release") {
     group = "build"
     description = "编译签名正式版 APK（等价 assembleRelease，含下划线命名副本输出）"
     dependsOn("assembleRelease")
-        doLast {
-            logger.lifecycle(
-                "正式包输出：build/outputs/named/${appName}_${appVersionName}_<年月日_时分秒>_release.apk",
-            )
-        }
+    doLast {
+        logger.lifecycle(
+            "正式包输出：build/outputs/named/${appName}_${appVersionName}_<年月日_时分秒>_release.apk",
+        )
+    }
 }
 
 dependencies {
