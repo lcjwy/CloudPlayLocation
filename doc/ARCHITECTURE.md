@@ -47,7 +47,7 @@
 - **注入容错（系统位置关闭场景）**：`setTestProviderLocation` 抛 `SecurityException`（部分 ROM 在系统位置关闭时）**容忍并继续重试，不 stopSelf**——系统位置开启后注入自动恢复；提示与日志整个服务周期仅一次（`apiErrorShown`，成功不复位：GPS/Network 单边交替失败时防刷屏）。模拟权限探测（`MockLocationAccess.isGranted`）**先定论后清理**：`addTestProvider` 成功即已授权，清理调用的异常不参与判定，避免被误判为「未选择模拟位置应用」。
 - Location 字段：accuracy(GPS=1f/Network=50f)、altitude=55.0、speed=0、bearing=0、time、elapsedRealtimeNanos、extras(satellites=7)。
 - 运行中换点/改频率 = 重发 intent（`onStartCommand` 更新并重排循环）；服务无 BIND，状态经 companion `isAlive` 暴露。
-- **注册阶段失败 ≠ 注入阶段失败**：`addTestProvider` 抛 `SecurityException`（模拟位置应用被取消选择）→ Toast + `MockLocationManager.onMockProvidersFailed()` 回滚开关 + stopSelf，避免「运行中」通知却永不注入的假运行态；注入阶段的 `SecurityException` 则容忍重试（见上）。
+- **注册阶段失败 ≠ 注入阶段失败**：注册失败（`addTestProvider` 抛异常，部分 ROM 在系统位置关闭期间会拒绝，或 mock 选择竞态/瞬时 binder 失败）**不立即停服**——前台服务照常运行，注入循环内按 1s 重试注册（期间恢复条件后自动恢复注入）；连续 15 次（约 15s）失败才 Toast + `MockLocationManager.onMockProvidersFailed()` 回滚开关 + stopSelf，不留「运行中」通知却永不注入的假运行态。注入阶段的 `SecurityException` 则容忍重试（见上）。注册异常类型 ROM 差异大，`ensureProviders`/`enableIfDisabled` 一律按宽捕获处理。
 - 双 provider 原因：部分应用只读 GPS、部分融合 Network，双注入保证一致。
 
 ### 2.3 坐标转换（:core:common CoordUtils）

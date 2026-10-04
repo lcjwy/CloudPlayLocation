@@ -46,9 +46,26 @@ class MockLocationService : Service() {
     @Volatile
     private var intervalMs = DEFAULT_INTERVAL_MS
 
+    // 主线程（onStartCommand）与注入线程（attemptRegister）共同读写
+    @Volatile
     private var providersAdded = false
+
     private var lastNotifiedLat = Double.NaN
     private var lastNotifiedLng = Double.NaN
+
+    /** 注册重试状态机：1s 节奏，首次失败提示一次，连续约 15s 失败回滚开关并停服 */
+    private val regRetry =
+        RegistrationRetry(
+            maxFailures = REG_MAX_FAILURES,
+            retryIntervalMs = REG_RETRY_INTERVAL_MS,
+            onFirstFailure = {
+                Toast.makeText(this, R.string.mock_no_permission, Toast.LENGTH_SHORT).show()
+            },
+            onGiveUp = {
+                MockLocationManager.onMockProvidersFailed()
+                stopSelf()
+            },
+        )
 
     /** 注入 API 异常提示/日志闸门：整个服务周期只提示一次（成功不复位，
      *  GPS/Network 单边失败交替时避免每个注入周期都 Toast 刷屏） */
@@ -102,17 +119,14 @@ class MockLocationService : Service() {
     ): Int {
         readIntent(intent)
         if (lat != 0.0 || lng != 0.0) {
-            val foregroundStarted = startForegroundSafely()
-            if (!foregroundStarted) {
-                // startForeground 失败必须立即停止：经 startForegroundService 拉起的服务
-                // 若 5s 内未成功 startForeground，系统会抛异常杀死进程
-                stopSelf()
-            } else if (ensureProviders()) {
+            if (startForegroundSafely()) {
+                // 注册失败不在这里终止：部分 ROM 在系统位置关闭期间会拒绝 addTestProvider，
+                // 且存在探测通过后注册瞬时失败的竞态。循环内按 1s 重试（期间开启系统位置
+                // 或恢复选择后自动恢复注入），连续超限才回滚停服（见 attemptRegister）
                 scheduleLoop()
             } else {
-                // TestProvider 注册失败（多为模拟位置应用被取消选择）：回滚开关并停止，
-                // 避免留下"运行中"通知却永不注入的假运行态
-                MockLocationManager.onMockProvidersFailed()
+                // startForeground 失败必须立即停止：经 startForegroundService 拉起的服务
+                // 若 5s 内未成功 startForeground，系统会抛异常杀死进程
                 stopSelf()
             }
         } else {
@@ -156,14 +170,16 @@ class MockLocationService : Service() {
             false
         }
 
+    @Suppress("TooGenericExceptionCaught")
     private fun ensureProviders(): Boolean {
         if (providersAdded) return true
         providersAdded =
             try {
                 TestProviders(lm).addAll()
-            } catch (e: SecurityException) {
-                Log.e(TAG, "addTestProvider SecurityException", e)
-                Toast.makeText(this, R.string.mock_no_permission, Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                // ROM 差异大：SecurityException / IllegalArgumentException / 其它
+                // 均有出现（尤其系统位置关闭时），统一按注册失败处理，由重试机制兜底
+                Log.w(TAG, "addTestProvider failed", e)
                 false
             }
         return providersAdded
@@ -182,7 +198,11 @@ class MockLocationService : Service() {
 
     private val tick: Runnable =
         Runnable {
-            injectAll()
+            if (providersAdded) {
+                injectAll()
+            } else {
+                regRetry.attempt { ensureProviders() }
+            }
             // 亮屏用设定频率；息屏钳制到 ≥1s，大幅减少唤醒与 IPC 次数
             val delay =
                 if (screenOn) {
@@ -281,6 +301,10 @@ class MockLocationService : Service() {
         private const val SATELLITES = 7
         private const val SCREEN_OFF_MIN_INTERVAL_MS = 1000L
 
+        /** 注册重试：1s 节奏，连续 15 次（约 15s）失败判定为持续失败 */
+        private const val REG_RETRY_INTERVAL_MS = 1_000L
+        private const val REG_MAX_FAILURES = 15
+
         @Volatile
         var isAlive = false
             private set
@@ -373,13 +397,54 @@ private class TestProviders(
     }
 
     /** API 31+ 注册即启用；仅当系统仍报禁用时补一次显式启用（系统位置关闭常见）。
-     *  启用调用在部分 ROM 上会抛异常：容忍跳过，注入循环自身具备容错与一次性提示 */
+     *  启用调用在部分 ROM（尤其系统位置关闭时）会抛出类型不一的异常：一律容忍跳过——
+     *  异常外漏会让整次注册被误判失败，主开关开启后 provider 随之启用，注入自动生效 */
+    @Suppress("TooGenericExceptionCaught")
     private fun enableIfDisabled(provider: String) {
         if (!lm.isProviderEnabled(provider)) {
             try {
                 lm.setTestProviderEnabled(provider, true)
-            } catch (ignore: SecurityException) {
+            } catch (ignore: Exception) {
             }
         }
+    }
+}
+
+/**
+ * 注册重试状态机（仅注入线程访问）：按固定节奏重试，首次失败提示一次，
+ * 连续 maxFailures 次失败回调终止——瞬时失败（系统位置关闭/mock 选择竞态）
+ * 在条件恢复后自动通过，持续失败才回滚，避免"开关开了又弹回"。
+ */
+private class RegistrationRetry(
+    private val maxFailures: Int,
+    private val retryIntervalMs: Long,
+    private val onFirstFailure: () -> Unit,
+    private val onGiveUp: () -> Unit,
+) {
+    private var failures = 0
+    private var lastAttemptAt = 0L
+    private var errorShown = false
+
+    /** 返回 true 表示注册成功 */
+    fun attempt(register: () -> Boolean): Boolean {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastAttemptAt < retryIntervalMs) return false
+        lastAttemptAt = now
+        val success = register()
+        if (success) {
+            failures = 0
+        } else {
+            onRegisterFailed()
+        }
+        return success
+    }
+
+    private fun onRegisterFailed() {
+        failures++
+        if (!errorShown) {
+            errorShown = true
+            onFirstFailure()
+        }
+        if (failures >= maxFailures) onGiveUp()
     }
 }
