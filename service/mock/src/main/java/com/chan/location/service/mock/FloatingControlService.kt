@@ -42,7 +42,9 @@ class FloatingControlService : Service() {
         return START_NOT_STICKY
     }
 
-    /** FGS 启动受系统/厂商限制，异常类型多，统一按启动失败处理 */
+    /** FGS 启动受系统/厂商限制，异常类型多，统一按启动失败处理：
+     *  管理器侧 startForegroundService 成功不代表服务存活——服务内 startForeground
+     *  抛异常（如 FGS 类型被厂商禁）会自杀，必须回滚开关否则开关 ON 而按钮消失 */
     @Suppress("TooGenericExceptionCaught")
     private fun startForegroundSafely(): Boolean =
         try {
@@ -64,6 +66,7 @@ class FloatingControlService : Service() {
             }
             true
         } catch (ignore: Exception) {
+            MockLocationManager.onFloatingServiceDead()
             stopSelf()
             false
         }
@@ -71,6 +74,7 @@ class FloatingControlService : Service() {
     private fun showOverlay() {
         if (buttonView != null) return
         if (!Settings.canDrawOverlays(this)) {
+            MockLocationManager.onFloatingServiceDead()
             stopSelf()
             return
         }
@@ -81,6 +85,7 @@ class FloatingControlService : Service() {
             buttonView = view
             windowManager = wm
         } catch (ignore: Exception) {
+            MockLocationManager.onFloatingServiceDead()
             stopSelf()
         }
     }

@@ -136,6 +136,12 @@ object MockLocationManager {
         scope.launch { settings.setMockEnabled(false) }
     }
 
+    /** 悬浮窗服务内部启动失败（startForeground/加窗被拒）：
+     *  服务会自行 stopSelf，这里回滚悬浮窗开关使 UI 与实际一致 */
+    fun onFloatingServiceDead() {
+        scope.launch { settings.setFloatingEnabled(false) }
+    }
+
     /** 悬浮窗长按入口（无 UI 环境校验）。返回错误文案；null 表示成功 */
     fun tryToggleFromOverlay(): String? {
         if (!::appCtx.isInitialized) return "应用尚未初始化"

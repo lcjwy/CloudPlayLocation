@@ -171,6 +171,9 @@ class MockLocationService : Service() {
             true
         } catch (e: Exception) {
             Log.e(TAG, "startForeground failed", e)
+            // 管理器侧 startForegroundService 已成功返回并写了运行开关：
+            // 服务内自杀前必须回滚，否则开关 ON 而服务已死
+            MockLocationManager.onMockProvidersFailed()
             Toast.makeText(this, R.string.mock_start_failed, Toast.LENGTH_LONG).show()
             false
         }
