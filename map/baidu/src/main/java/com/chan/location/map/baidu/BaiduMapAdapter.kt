@@ -62,10 +62,16 @@ class BaiduMapAdapter(
             }
 
             override fun onMapStatusChangeFinish(status: MapStatus?) {
+                val wasProgrammatic = programmaticMove
                 programmaticMove = false
-                // Finish 无条件补报：程序化动画（换点/缩放按钮）期间被抑制的
-                // 终点中心与缩放级别需落到 UI（比例尺依赖后者）；值未变时 UI 侧幂等
-                status.report()
+                val s = status ?: return
+                if (wasProgrammatic) {
+                    // 程序化落点的中心已由 moveCamera/moveToMyLocation 直接回报精确值；
+                    // 此处补报 BD09→WGS 往返换算值会带米级漂移，只补报缩放供比例尺刷新
+                    onZoomChanged?.invoke(s.zoom)
+                } else {
+                    s.report()
+                }
             }
 
             private fun MapStatus?.report() {
@@ -169,7 +175,10 @@ class BaiduMapAdapter(
 
     override fun moveToMyLocation(): Boolean {
         val fix = lastFix ?: return false
-        // 与 moveCamera 一致抑制动画期间的中心回调抖动；手势起始复位保证可恢复
+        // 与 moveCamera 一致：直接回报精确目标中心并抑制动画期间的回调抖动；
+        // 手势起始复位保证可恢复
+        val wgs = CoordUtils.bd092wgs(GeoLatLng(fix.latitude, fix.longitude))
+        onCenterChanged?.invoke(wgs.lat, wgs.lng)
         programmaticMove = true
         baiduMap.animateMapStatus(
             MapStatusUpdateFactory.newLatLngZoom(

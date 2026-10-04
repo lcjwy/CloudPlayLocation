@@ -35,9 +35,6 @@ import kotlinx.coroutines.launch
 /** 无选点时的默认视角（北京，WGS84） */
 private val DEFAULT_POINT = GeoLatLng(39.908722, 116.397499)
 
-/** 点虚拟位置进入的近景缩放级别（比例尺约 10m 级） */
-private const val CLOSE_ZOOM = 20f
-
 /** 退出页面后延迟销毁地图实例，避开返回动画 */
 private const val DESTROY_DELAY_MS = 300L
 
@@ -48,7 +45,6 @@ fun MapScreen(
     mapAdapterFactory: MapAdapterFactory,
     onExit: () -> Unit,
     focusPointId: Long? = null,
-    closeUp: Boolean = false,
 ) {
     val scope = rememberCoroutineScope()
 
@@ -66,7 +62,6 @@ fun MapScreen(
             mapAdapterFactory,
             pointRepository,
             focusPointId,
-            closeUp,
         )
     val adapter = handle.adapter
     val unsaved = !handle.center.nearlyEquals(handle.committed)
@@ -128,7 +123,6 @@ private fun rememberMapAdapter(
     mapAdapterFactory: MapAdapterFactory,
     pointRepository: PointRepository,
     focusPointId: Long?,
-    closeUp: Boolean,
 ): MapHandle {
     val context = LocalContext.current
     val state = remember { MapHandle() }
@@ -141,7 +135,6 @@ private fun rememberMapAdapter(
                 mapAdapterFactory,
                 pointRepository,
                 focusPointId,
-                closeUp,
             )
         applySetup(setup, state)
     }
@@ -197,7 +190,6 @@ private suspend fun buildMapSetup(
     factory: MapAdapterFactory,
     repo: PointRepository,
     focusPointId: Long?,
-    closeUp: Boolean,
 ): MapSetup {
     val source = settings.mapSource.first()
     val privacy = settings.privacyAgreed.first() == true
@@ -207,13 +199,7 @@ private suspend fun buildMapSetup(
         focus?.let { GeoLatLng(it.wgsLat, it.wgsLng) }
             ?: selected?.let { GeoLatLng(it.wgsLat, it.wgsLng) }
             ?: DEFAULT_POINT
-    // 带明确目标点（卡片点击/条目定位）用近景；空白选点用默认级
-    val initialZoom =
-        if (closeUp || focus != null) {
-            CLOSE_ZOOM
-        } else {
-            DEFAULT_ZOOM
-        }
+    // 入场统一默认比例：近景级别会把米级坐标系换算误差放大到肉眼可见
     val withMyLocation = privacy && MockCheck.hasLocationPermission(context)
     val adapter =
         factory.create(
@@ -222,12 +208,12 @@ private suspend fun buildMapSetup(
                 source = if (privacy) source else MapSource.OSM,
                 lat = initial.lat,
                 lng = initial.lng,
-                zoom = initialZoom,
+                zoom = DEFAULT_ZOOM,
                 myLocationEnabled = withMyLocation,
                 privacyAgreed = privacy,
             ),
         )
-    return MapSetup(adapter, initial, initialZoom, withMyLocation, focus)
+    return MapSetup(adapter, initial, DEFAULT_ZOOM, withMyLocation, focus)
 }
 
 /** 地图实例 + 选点状态；askUse 为条目定位跳转带来的待确认点位 */

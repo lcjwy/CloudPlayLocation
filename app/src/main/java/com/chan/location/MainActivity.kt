@@ -44,17 +44,14 @@ class MainActivity : ComponentActivity() {
 
 private object Routes {
     const val HOME = "home"
-    const val MAP = "map?pid={pid}&close={close}"
+    const val MAP = "map?pid={pid}"
     const val SETTINGS = "settings"
 
     /** 打开地图（不带定位点，默认缩放）；带占位符的 MAP 不可直接用于 navigate */
     const val MAP_PLAIN = "map"
 
-    /** 打开地图查看当前虚拟位置：近景缩放（比例尺约 10m 级） */
-    const val MAP_CLOSE = "map?close=1"
-
-    /** 携带点位 id 打开地图：定位到该点近景并确认是否启用 */
-    fun mapWithPoint(pid: Long): String = "map?pid=$pid&close=1"
+    /** 携带点位 id 打开地图：定位到该点并确认是否启用 */
+    fun mapWithPoint(pid: Long): String = "map?pid=$pid"
 }
 
 @Composable
@@ -100,10 +97,6 @@ private fun AppNavHost(
                         type = NavType.StringType
                         nullable = true
                     },
-                    navArgument("close") {
-                        type = NavType.StringType
-                        nullable = true
-                    },
                 ),
         ) { entry ->
             MapDestination(entry, navController, settings, points, mapAdapterFactory)
@@ -125,7 +118,7 @@ private fun HomeDestination(
         pointRepository = points,
         settingsRepository = settings,
         onAddPoint = { navController.navigate(Routes.MAP_PLAIN) { launchSingleTop = true } },
-        onOpenMap = { navController.navigate(Routes.MAP_CLOSE) { launchSingleTop = true } },
+        onOpenMap = { navController.navigate(Routes.MAP_PLAIN) { launchSingleTop = true } },
         onLocateOnMap = {
             navController.navigate(Routes.mapWithPoint(it.id)) { launchSingleTop = true }
         },
@@ -133,7 +126,7 @@ private fun HomeDestination(
     )
 }
 
-/** 地图页：pid 为可选定位点；close=1 表示查看具体点位，近景入场 */
+/** 地图页：pid 为可选定位点（有点位则居中到该点并弹“使用该点”确认） */
 @Composable
 private fun MapDestination(
     entry: NavBackStackEntry,
@@ -148,7 +141,6 @@ private fun MapDestination(
         mapAdapterFactory = mapAdapterFactory,
         onExit = { navController.popBackStack() },
         focusPointId = entry.arguments?.getString("pid")?.toLongOrNull(),
-        closeUp = entry.arguments?.getString("close") == "1",
     )
 }
 
