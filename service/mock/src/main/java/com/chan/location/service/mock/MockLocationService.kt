@@ -236,6 +236,10 @@ class MockLocationService : Service() {
         }
     }
 
+    /** 注入异常必须全部吞掉：异常外漏会杀死注入线程→进程崩溃，已注册的
+     *  TestProvider 残留且无人清理（表现为"虚拟位置关不掉"）；
+     *  IAE 是停服竞态的正常噪声，静默跳过 */
+    @Suppress("TooGenericExceptionCaught")
     private fun injectOne(
         provider: String,
         accuracy: Float,
@@ -256,16 +260,16 @@ class MockLocationService : Service() {
                     extras = Bundle().apply { putInt("satellites", SATELLITES) }
                 }
             lm.setTestProviderLocation(provider, location)
-        } catch (e: SecurityException) {
-            // 部分ROM在系统位置关闭等场景抛 SecurityException：容忍并继续重试
-            // （系统位置开启后注入自动恢复）；提示与日志整个服务周期仅一次
+        } catch (ignore: IllegalArgumentException) {
+            // provider 未注册，跳过本次
+        } catch (e: Exception) {
+            // 部分ROM在系统位置关闭等场景抛出类型不一的异常（不止 SecurityException）：
+            // 容忍并继续（系统位置开启后注入自动恢复）；提示与日志整个服务周期仅一次
             if (!apiErrorShown) {
                 Log.w(TAG, "setTestProviderLocation($provider) failed", e)
                 apiErrorShown = true
                 Toast.makeText(this, R.string.mock_api_error, Toast.LENGTH_LONG).show()
             }
-        } catch (ignore: IllegalArgumentException) {
-            // provider 未注册，跳过本次
         }
     }
 
@@ -331,17 +335,19 @@ class MockLocationService : Service() {
     }
 }
 
-/** 双 TestProvider 注册/注销：API 31+ 用 ProviderProperties，26–30 用 Criteria */
-private class TestProviders(
+/** 双 TestProvider 注册/注销：API 31+ 用 ProviderProperties，26–30 用 Criteria；
+ *  internal 供 MockLocationManager 启动时兜底清理进程残留 */
+internal class TestProviders(
     private val lm: LocationManager,
 ) {
-    /** 注销残留 provider；未注册过/未授权均属可忽略场景 */
+    /** 注销残留 provider；未注册/未授权，以及系统位置关闭时部分 ROM 抛出的
+     *  异常类型不一，逐个 provider 独立吞掉——任一失败不能中断另一个的清理 */
+    @Suppress("TooGenericExceptionCaught")
     fun removeAll() {
         for (provider in arrayOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)) {
             try {
                 lm.removeTestProvider(provider)
-            } catch (ignore: SecurityException) {
-            } catch (ignore: IllegalArgumentException) {
+            } catch (ignore: Exception) {
             }
         }
     }

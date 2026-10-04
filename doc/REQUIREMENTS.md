@@ -98,6 +98,7 @@ FOREGROUND_SERVICE_LOCATION / FOREGROUND_SERVICE_SPECIAL_USE / SYSTEM_ALERT_WIND
   - 通知：显示当前坐标，点击回 MainActivity；停止时 removeTestProvider 双 provider + stopForeground。
   - **异常提示**：设置/注入过程异常必须反馈用户，不静默——首页卡片启动路径的异常（注册权限缺失、前台服务启动失败、后台启动受限）即时 Toast；循环注入的 `SecurityException` 容忍重试（系统位置可不开，开启后自动恢复），Toast **整个服务周期仅一次**（防 GPS/Network 单边交替失败刷屏）。
   - **失败不留假运行态**：注册 TestProvider 失败 → 服务不立即终止，循环内按 1s 重试（部分 ROM 在系统位置关闭期间拒绝注册，开启后自动恢复；瞬时失败同样自愈）；连续约 15s 失败 → Toast + 回滚运行开关 + 停止服务，不保留"运行中"通知；虚拟位置与悬浮窗两个前台服务启动失败（含管理器侧 `startForegroundService` 被拒、服务内 `startForeground` 抛异常、悬浮窗加窗被拒）时**各自回滚各自的开关**并提示对应文案，悬浮窗失败不误关虚拟位置。
+  - **关闭必须关净（停止链路加固）**：`stop()` 直停两个服务并兜底清理 TestProvider，不依赖 reconcile 收集器存活与 `onDestroy` 清理成功——系统位置关闭时部分 ROM 注销/注入 provider 抛类型不一的异常（不止 `SecurityException`），任何一环异常外漏都会杀死注入线程或收集器，留下压制真实定位的残留（"已关闭仍在生效"）；注入与注销异常逐 provider 全量吞掉，App 启动时再无条件清理一次进程残留。
 - `FloatingControlService`：前台服务 `foregroundServiceType="specialUse"`，在**虚拟位置运行中且悬浮窗开关开启**时运行（停止注入即随服务消失；注入服务被系统杀死后仍可经长按恢复启动），持有悬浮按钮，最小化通知（静音渠道）。
 - 设备重启后**不自动恢复**虚拟位置（不引入开机广播权限）；主页保留选中点显示，开关置关。
 

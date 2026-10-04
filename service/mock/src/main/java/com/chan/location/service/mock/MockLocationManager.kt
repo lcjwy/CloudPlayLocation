@@ -3,9 +3,11 @@ package com.chan.location.service.mock
 import android.app.Application
 import android.content.Context
 import android.content.Intent
+import android.location.LocationManager
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.util.Log
 import android.widget.Toast
 import com.chan.location.core.common.MockCheck
 import com.chan.location.core.common.MockCheckError
@@ -26,6 +28,8 @@ import kotlinx.coroutines.launch
  * UI 与悬浮窗均只调 start/stop/retarget，不再自行操作 Service。
  */
 object MockLocationManager {
+    private const val TAG = "MockLocationMgr"
+
     private lateinit var appCtx: Context
     private lateinit var settings: SettingsRepository
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -49,6 +53,10 @@ object MockLocationManager {
             if (settings.mockEnabled.first() && !MockLocationService.isAlive) {
                 settings.setMockEnabled(false)
             }
+            // init 时本服务必然未运行：进程被杀/崩溃时 onDestroy 的 removeTestProvider
+            // 不会执行，残留 TestProvider 会持续压制真实定位（表现为"已关闭仍在生效"），
+            // 启动时无条件兜底清理
+            cleanupResidualProviders()
         }
     }
 
@@ -85,7 +93,10 @@ object MockLocationManager {
 
     /** 启动 FGS；失败时回滚对应开关并提示——哪个服务失败回滚哪个开关、提示哪个服务，
      *  悬浮窗失败不能误关虚拟位置（scope 在 Default 线程，Toast 需主线程）。
-     *  返回是否启动成功，调用方据此决定是否写运行开关 */
+     *  返回是否启动成功，调用方据此决定是否写运行开关。
+     *  异常必须全部接住：厂商限制抛出的类型不一（ForegroundServiceStartNotAllowed/
+     *  SecurityException 等），外漏会杀死 reconcile 收集器，之后所有启停静默失效 */
+    @Suppress("TooGenericExceptionCaught")
     private fun startServiceSafe(
         intent: Intent,
         toastRes: Int = R.string.mock_start_failed,
@@ -94,7 +105,8 @@ object MockLocationManager {
         try {
             appCtx.startForegroundService(intent)
             true
-        } catch (ignore: IllegalStateException) {
+        } catch (e: Exception) {
+            Log.w(TAG, "startForegroundService failed", e)
             scope.launch { rollback() }
             mainHandler.post {
                 Toast.makeText(appCtx, toastRes, Toast.LENGTH_LONG).show()
@@ -126,8 +138,22 @@ object MockLocationManager {
         }
     }
 
+    /** 停止：直接停两个服务并兜底清理 TestProvider，不依赖 reconcile 收集器存活，
+     *  也不依赖 onDestroy 的清理成功——系统位置关闭时部分 ROM 注销 provider 会抛
+     *  类型不一的异常，任何一环中断都会留下"关不掉"的虚拟位置 */
     fun stop() {
-        scope.launch { settings.setMockEnabled(false) }
+        scope.launch {
+            settings.setMockEnabled(false)
+            appCtx.stopService(Intent(appCtx, MockLocationService::class.java))
+            appCtx.stopService(Intent(appCtx, FloatingControlService::class.java))
+            cleanupResidualProviders()
+        }
+    }
+
+    /** 清理可能残留的 TestProvider（未注册时抛 IAE，由 removeAll 自行吞掉） */
+    private fun cleanupResidualProviders() {
+        val lm = appCtx.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        TestProviders(lm).removeAll()
     }
 
     /** 服务内 TestProvider 注册失败（模拟位置应用被取消选择等）：
