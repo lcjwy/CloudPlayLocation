@@ -43,6 +43,9 @@ class MockLocationService : Service() {
     private var lat = 0.0
     private var lng = 0.0
 
+    /** intent 是否携带有效目标点（START_NOT_STICKY 空重启无此标记） */
+    private var hasTarget = false
+
     @Volatile
     private var intervalMs = DEFAULT_INTERVAL_MS
 
@@ -118,7 +121,8 @@ class MockLocationService : Service() {
         startId: Int,
     ): Int {
         readIntent(intent)
-        if (lat != 0.0 || lng != 0.0) {
+        // 不能用坐标非零判断目标存在：(0,0) 是合法可输入坐标（几内亚湾）
+        if (hasTarget) {
             if (startForegroundSafely()) {
                 // 注册失败不在这里终止：部分 ROM 在系统位置关闭期间会拒绝 addTestProvider，
                 // 且存在探测通过后注册瞬时失败的竞态。循环内按 1s 重试（期间开启系统位置
@@ -138,6 +142,7 @@ class MockLocationService : Service() {
 
     private fun readIntent(intent: Intent?) {
         intent?.let {
+            hasTarget = it.getBooleanExtra(EXTRA_HAS_TARGET, hasTarget)
             lat = it.getDoubleExtra(EXTRA_LAT, lat)
             lng = it.getDoubleExtra(EXTRA_LNG, lng)
             intervalMs =
@@ -289,6 +294,7 @@ class MockLocationService : Service() {
         private const val EXTRA_LAT = "extra_lat"
         private const val EXTRA_LNG = "extra_lng"
         private const val EXTRA_INTERVAL = "extra_interval"
+        private const val EXTRA_HAS_TARGET = "extra_has_target"
         private const val MIN_INTERVAL_MS = 10
         private const val MAX_INTERVAL_MS = 100
         private const val DEFAULT_INTERVAL_MS = 100
@@ -315,6 +321,7 @@ class MockLocationService : Service() {
             intervalMs: Int,
         ): Intent =
             Intent(context, MockLocationService::class.java)
+                .putExtra(EXTRA_HAS_TARGET, point != null)
                 .putExtra(EXTRA_LAT, point?.wgsLat ?: 0.0)
                 .putExtra(EXTRA_LNG, point?.wgsLng ?: 0.0)
                 .putExtra(EXTRA_INTERVAL, intervalMs)
