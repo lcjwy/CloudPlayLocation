@@ -8,7 +8,8 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface PointDao {
-    @Query("SELECT * FROM points WHERE isFavorite = 0 ORDER BY lastUsedAt DESC")
+    /** 历史 = 全部点位按最近使用倒序；收藏条目仍保留在历史中（收藏只是标记，不搬家） */
+    @Query("SELECT * FROM points ORDER BY lastUsedAt DESC")
     fun history(): Flow<List<PointEntity>>
 
     @Query("SELECT * FROM points WHERE isFavorite = 1 ORDER BY lastUsedAt DESC")

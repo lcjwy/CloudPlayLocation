@@ -85,7 +85,7 @@ internal fun SelectedPointCard(
                 Text(
                     text = selected?.name?.ifBlank { "未命名位置" } ?: "未选择位置",
                     style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(Modifier.height(2.dp))
@@ -251,7 +251,7 @@ private fun PointRow(
         headlineContent = {
             Text(
                 item.name.ifBlank { "未命名位置" },
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
         },
