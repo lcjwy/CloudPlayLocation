@@ -14,4 +14,5 @@ android {
 
 dependencies {
     testImplementation(libs.junit4)
+    testImplementation(libs.mockito.core)
 }

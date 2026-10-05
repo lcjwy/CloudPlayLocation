@@ -13,6 +13,8 @@ android {
 }
 
 dependencies {
+    testImplementation(libs.junit4)
+    testImplementation(libs.mockito.core)
     implementation(project(":core:common"))
     implementation(project(":core:data"))
     implementation(libs.androidx.core.ktx)

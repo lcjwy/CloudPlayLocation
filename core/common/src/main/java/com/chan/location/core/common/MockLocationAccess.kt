@@ -7,6 +7,8 @@ import android.os.Build
 
 /** 检测本应用是否已被系统选为"模拟位置信息应用"（试探法，移植自 Gogogo GoUtils） */
 object MockLocationAccess {
+    private const val PROBE_PROVIDER = "com.chan.location.permission_probe"
+
     /**
      * addTestProvider 成功即视为已授权（与 Gogogo 一致：先定论、后清理）；
      * 清理探测痕迹的调用单独兜底，其失败不影响判定——部分 ROM 在系统位置
@@ -28,13 +30,13 @@ object MockLocationAccess {
         if (granted) {
             // 两个清理调用必须各自兜底：setTestProviderEnabled 在系统位置关闭的
             // ROM 上会抛异常，合并一个 try 会跳过 removeTestProvider，残留的
-            // GPS TestProvider 会替身真实 GPS，全局压制其它应用的定位
+            // 探测 provider；使用独立名称，不干扰运行中的 GPS/Network
             try {
-                lm.setTestProviderEnabled(LocationManager.GPS_PROVIDER, false)
+                lm.setTestProviderEnabled(PROBE_PROVIDER, false)
             } catch (ignore: Exception) {
             }
             try {
-                lm.removeTestProvider(LocationManager.GPS_PROVIDER)
+                lm.removeTestProvider(PROBE_PROVIDER)
             } catch (ignore: Exception) {
             }
         }
@@ -45,7 +47,7 @@ object MockLocationAccess {
         // 废弃的 10 参重载 + 常量（Gogogo 同款，含 API 31+）：Builder 新重载在部分 ROM 行为不一致
         @Suppress("DEPRECATION")
         lm.addTestProvider(
-            LocationManager.GPS_PROVIDER,
+            PROBE_PROVIDER,
             false,
             true,
             false,

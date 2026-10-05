@@ -32,6 +32,8 @@ import java.util.Locale
  */
 class MockLocationService : Service() {
     private lateinit var lm: LocationManager
+    private val providerLock = Any()
+    private var stopping = false
 
     // 主线程写（onCreate/onDestroy），注入线程与广播读：volatile 保证销毁空值对 tick 可见
     @Volatile
@@ -179,19 +181,21 @@ class MockLocationService : Service() {
         }
 
     @Suppress("TooGenericExceptionCaught")
-    private fun ensureProviders(): Boolean {
-        if (providersAdded) return true
-        providersAdded =
-            try {
-                TestProviders(lm).addAll()
-            } catch (e: Exception) {
-                // ROM 差异大：SecurityException / IllegalArgumentException / 其它
-                // 均有出现（尤其系统位置关闭时），统一按注册失败处理，由重试机制兜底
-                Log.w(TAG, "addTestProvider failed", e)
-                false
-            }
-        return providersAdded
-    }
+    private fun ensureProviders(): Boolean =
+        synchronized(providerLock) {
+            if (stopping) return@synchronized false
+            if (providersAdded) return@synchronized true
+            providersAdded =
+                try {
+                    TestProviders(lm).addAll()
+                } catch (e: Exception) {
+                    // ROM 差异大：SecurityException / IllegalArgumentException / 其它
+                    // 均有出现（尤其系统位置关闭时），统一按注册失败处理，由重试机制兜底
+                    Log.w(TAG, "addTestProvider failed", e)
+                    false
+                }
+            providersAdded
+        }
 
     private fun scheduleLoop() {
         if (handlerThread == null) {
@@ -238,7 +242,7 @@ class MockLocationService : Service() {
 
     /** 注入异常必须全部吞掉：异常外漏会杀死注入线程→进程崩溃，已注册的
      *  TestProvider 残留且无人清理（表现为"虚拟位置关不掉"）；
-     *  IAE 是停服竞态的正常噪声，静默跳过 */
+     *  provider 丢失时将注册状态复位，由下一轮循环重建 */
     @Suppress("TooGenericExceptionCaught")
     private fun injectOne(
         provider: String,
@@ -261,7 +265,8 @@ class MockLocationService : Service() {
                 }
             lm.setTestProviderLocation(provider, location)
         } catch (ignore: IllegalArgumentException) {
-            // provider 未注册，跳过本次
+            // provider 丢失后重新注册；停服时循环已被移除。
+            providersAdded = false
         } catch (e: Exception) {
             // 部分ROM在系统位置关闭等场景抛出类型不一的异常（不止 SecurityException）：
             // 容忍并继续（系统位置开启后注入自动恢复）；提示与日志整个服务周期仅一次
@@ -288,7 +293,8 @@ class MockLocationService : Service() {
         handlerThread?.quitSafely()
         handlerThread = null
         handler = null
-        if (providersAdded) {
+        synchronized(providerLock) {
+            stopping = true
             TestProviders(lm).removeAll()
             providersAdded = false
         }
@@ -354,11 +360,18 @@ internal class TestProviders(
 
     fun addAll(): Boolean {
         removeAll()
-        addGps()
-        addNetwork()
-        enableIfDisabled(LocationManager.GPS_PROVIDER)
-        enableIfDisabled(LocationManager.NETWORK_PROVIDER)
-        return true
+        var registrationComplete = false
+        try {
+            addGps()
+            addNetwork()
+            enableIfDisabled(LocationManager.GPS_PROVIDER)
+            enableIfDisabled(LocationManager.NETWORK_PROVIDER)
+            registrationComplete = true
+            return true
+        } finally {
+            // 注册未全部完成时回滚，避免 GPS 成功、Network 失败留下替身。
+            if (!registrationComplete) removeAll()
+        }
     }
 
     /** 废弃的 10 参重载 + 常量（Gogogo 同款，含 API 31+）：Builder 新重载在部分 ROM 行为不一致 */
