@@ -1,3 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- API 31 以下的全量备份规则：默认全备份，无需排除项 -->
-<full-backup-content />
+<!-- 点位与设置不参与系统备份。 -->
+<full-backup-content>
+    <exclude domain="database" path="." />
+    <exclude domain="file" path="." />
+    <exclude domain="sharedpref" path="." />
+    <exclude domain="external" path="." />
+    <exclude domain="root" path="." />
+</full-backup-content>
