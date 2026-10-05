@@ -29,7 +29,6 @@ class BaiduMapAdapter(
     private var locationClient: LocationClient? = null
     private var lastFix: BDLocation? = null
     private var myLocationEnabled = false
-    private var autoMovedToFix = false
 
     /** 程序化相机移动期间不向 UI 回报（避免坐标抖动），结束时复位 */
     private var programmaticMove = false
@@ -162,10 +161,7 @@ class BaiduMapAdapter(
                             .longitude(location.longitude)
                             .build(),
                     )
-                    if (!autoMovedToFix) {
-                        autoMovedToFix = true
-                        moveCamera(location.latitude, location.longitude, currentZoom)
-                    }
+                    // 蓝点更新不覆盖用户选点；仅点击“我的位置”时移动相机。
                 }
             },
         )

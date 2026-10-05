@@ -14,6 +14,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.chan.location.core.common.GeoLatLng
 import com.chan.location.core.common.MapSource
@@ -64,6 +67,7 @@ fun MapScreen(
             focusPointId,
         )
     val adapter = handle.adapter
+    MapLifecycle(adapter)
     val unsaved = !handle.center.nearlyEquals(handle.committed)
     val context = LocalContext.current
     val controller = remember(gate) { MapController(context, scope, pointRepository, gate, handle) }
@@ -155,6 +159,30 @@ private fun rememberMapAdapter(
     return state
 }
 
+/** 地图跟随页面前后台状态，后台立即停止蓝点定位。 */
+@Composable
+private fun MapLifecycle(adapter: MapAdapter?) {
+    val owner = LocalLifecycleOwner.current
+    DisposableEffect(owner, adapter) {
+        val observer =
+            LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_RESUME -> adapter?.onResume()
+                    Lifecycle.Event.ON_PAUSE -> adapter?.onPause()
+                    else -> Unit
+                }
+            }
+        owner.lifecycle.addObserver(observer)
+        if (!owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            adapter?.onPause()
+        }
+        onDispose {
+            owner.lifecycle.removeObserver(observer)
+            adapter?.onPause()
+        }
+    }
+}
+
 /** 装配落位：回调接线 + 初始状态写入（中心/提交点/缩放/待确认点位） */
 private fun applySetup(
     setup: MapSetup,
@@ -166,7 +194,6 @@ private fun applySetup(
     setup.adapter.onZoomChanged = { zoom ->
         state.zoom = zoom
     }
-    setup.adapter.onResume()
     state.adapter = setup.adapter
     state.myLocationEnabled = setup.myLocationEnabled
     state.center = setup.initial
