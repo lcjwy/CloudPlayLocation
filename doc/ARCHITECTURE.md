@@ -33,7 +33,7 @@
 ```
 用户开开关 / 点列表项 / 地图页锁定
   → 位置权限(FINE+COARSE)？ → 否：运行时申请
-  → 模拟位置应用已选？(试探 addTestProvider, SecurityException=未选) → 否：跳 ACTION_APPLICATION_DEVELOPMENT_SETTINGS
+  → 模拟位置应用已选？(独立 permission_probe 试探 addTestProvider, SecurityException=未选) → 否：跳 ACTION_APPLICATION_DEVELOPMENT_SETTINGS
   → (悬浮窗开启时) canDrawOverlays？ → 否：跳 ACTION_MANAGE_OVERLAY_PERMISSION
   → WiFi 已开启？(Toast 软提醒，不阻断，提示后直接启动)
   → MockLocationManager.start(point)
@@ -44,10 +44,11 @@
 ### 2.2 位置注入循环（MockLocationService）
 - 注册双 TestProvider：GPS（POWER_USAGE_HIGH/ACCURACY_FINE）+ Network（LOW/COARSE）。**统一走废弃的 10 参 `addTestProvider` 重载 + 常量**（Gogogo 同款，含 API 31+；`ProviderProperties.Builder()` 新重载在部分 ROM 行为不一致）；注册后 `isProviderEnabled` 仍报禁用时（系统位置关闭常见）补一次 `setTestProviderEnabled(true)`。
 - `HandlerThread("MockLocation")` 自循环：每 interval（10–100ms，默认 100）先 Network 后 GPS 各 `setTestProviderLocation` 一次。
-- **注入容错（系统位置关闭场景）**：`setTestProviderLocation` 抛 `SecurityException`（部分 ROM 在系统位置关闭时）**容忍并继续重试，不 stopSelf**——系统位置开启后注入自动恢复；提示与日志整个服务周期仅一次（`apiErrorShown`，成功不复位：GPS/Network 单边交替失败时防刷屏）。模拟权限探测（`MockLocationAccess.isGranted`）**先定论后清理**：`addTestProvider` 成功即已授权，清理调用的异常不参与判定，避免被误判为「未选择模拟位置应用」。
+- **注入容错（系统位置关闭场景）**：`setTestProviderLocation` 抛 `SecurityException`（部分 ROM 在系统位置关闭时）**容忍并继续重试，不 stopSelf**——系统位置开启后注入自动恢复；提示与日志整个服务周期仅一次（`apiErrorShown`，成功不复位：GPS/Network 单边交替失败时防刷屏）。模拟权限探测使用独立 `com.chan.location.permission_probe`，不修改运行中的 GPS/Network；（`MockLocationAccess.isGranted`）**先定论后清理**：`addTestProvider` 成功即已授权，清理调用的异常不参与判定，避免被误判为「未选择模拟位置应用」。
 - Location 字段：accuracy(GPS=1f/Network=50f)、altitude=55.0、speed=0、bearing=0、time、elapsedRealtimeNanos、extras(satellites=7)。
 - 运行中换点/改频率 = 重发 intent（`onStartCommand` 更新并重排循环）；服务无 BIND，状态经 companion `isAlive` 暴露。
 - **注册阶段失败 ≠ 注入阶段失败**：注册失败（`addTestProvider` 抛异常，部分 ROM 在系统位置关闭期间会拒绝，或 mock 选择竞态/瞬时 binder 失败）**不立即停服**——前台服务照常运行，注入循环内按 1s 重试注册（期间恢复条件后自动恢复注入）；连续 15 次（约 15s）失败才 Toast + `MockLocationManager.onMockProvidersFailed()` 回滚开关 + stopSelf，不留「运行中」通知却永不注入的假运行态。注入阶段的 `SecurityException` 则容忍重试（见上）。注册异常类型 ROM 差异大，`ensureProviders`/`enableIfDisabled` 一律按宽捕获处理。
+- 注册任一步失败立即回滚双 provider；销毁时无条件清理，注册与销毁加锁防止清理后再注册。注入发现 provider 丢失时复位注册状态，由重试循环恢复。
 - 双 provider 原因：部分应用只读 GPS、部分融合 Network，双注入保证一致。
 
 ### 2.3 坐标转换（:core:common CoordUtils）
@@ -66,6 +67,7 @@ MapAdapterFactory: (context, MapConfig) -> MapAdapter，由 :app 提供实现选
 ```
 - `MapConfig.source` 决定实现；未同意隐私 → :app 工厂强制回退 osmdroid。
 - `onCenterChanged`/`onZoomChanged` 双回调：百度程序化移动（`moveCamera`/`moveToMyLocation`）直接回报精确目标中心并抑制动画期间抖动；Finish 在手势结束时全量回报，程序化落点后只补报缩放（比例尺依赖）——不回写 BD09→WGS 往返换算值，避免米级漂移覆盖已选点精确坐标；OSM 经 MapListener 120ms 防抖回报。
+- 蓝点更新不自动移动相机，保留初始选中点/历史点；点击「我的位置」时才将 BD09 定位结果转成 WGS84 并回报。地图生命周期监听页面 ON_RESUME/ON_PAUSE，后台停止定位客户端。
 - 百度懒初始化：`BaiduSdkInitializer.ensureInit(context, privacyAgreed)` 幂等，仅在工厂创建百度 Adapter 时调用，先于 MapView 创建；`setAgreePrivacy(true)` + `initialize` + `setCoordType(BD09LL)`。
 - 百度显示 `wgs2bd09`、回调 `bd092wgs`；`programmaticMove` 标志抑制程序化相机移动期间的回调抖动，手势起始（`REASON_GESTURE`）强制复位——程序化动画无回调时（已在目标点/缩放极限）标志等不到 Finish 复位，不复位会导致拖动不再回报中心点。
 - osmdroid：WGS84 直通；`Configuration` 缓存指向应用私有目录（免存储权限）；中心点回调 120ms 防抖。
@@ -118,6 +120,7 @@ local.properties(BAIDU_MAP_KEY, 不入库) → :app build.gradle 读取 → mani
 - **detekt/ktlint 接入**：detekt 1.23.8 在 Gradle 9.2.1 可用（2.0 尚为 alpha）；`@Composable` 命名需 `.editorconfig` 设 `ktlint_function_naming_ignore_when_annotated_with = Composable`；`EmptyFunctionBlock` 属 `empty-blocks` 规则集（非 style）；MagicNumber 对 Compose UI 字面量是噪音，已关闭。
 - **出包命令**：正式包直接 `./gradlew release`（`app/build.gradle.kts` 的快捷任务，= assembleRelease + 自动输出**项目级** `build/outputs/named/云游_<版本>_<yyyyMMdd_HHmmss>_release.apk` 下划线命名副本，版本号见 `appVersionName`）。
 - **APK 体积**（release ≈13.5MB，debug ≈31MB 仅自测）：三项手段——① `packaging.jniLibs.useLegacyPackaging = true` 让 so 在 APK 内压缩存储（百度 map so 12.6MB→5.3MB；代价是安装后 so 解压、磁盘占用略增）；② release `isShrinkResources = true`；③ `androidResources.localeFilters += "zh"` 仅保留中文（AGP9 用 localeFilters，旧版 resourceConfigurations 已换名）。debug 大是因不混淆 + dex 未裁剪，交付一律用 release。
+- **本地数据保护**：`allowBackup=false`；旧版备份规则与 API 31+ 云备份/设备迁移规则均排除数据库、文件、偏好和外部应用数据，点位与设置不参与系统备份或迁移。
 - **地图返回卡顿**：退出地图页时 `onDestroy` 的 GL/JNI 同步释放（百度 MapView）发生在返回动画期间会掉帧；`rememberMapAdapter` 的 onDispose 将 pause+destroy 延迟 300ms 到动画结束后执行（主线程 Handler），期间地图保持渲染。
 - **lintVital 阻断 release**：release 编译自动跑 lintVital，`ACCESS_MOCK_LOCATION` 会触发 MockLocation fatal 检查（lint 默认该权限仅限 debug 构建）；已在 manifest 该条目上加 `tools:ignore="MockLocation"` 定向豁免。
 

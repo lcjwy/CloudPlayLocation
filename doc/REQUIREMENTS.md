@@ -192,6 +192,15 @@ build-logic           轻量 convention plugins（android-library / compose-feat
 - [ ] 权限核对：merged manifest 无 `READ_PHONE_STATE` 等无关权限。
 - [ ] `gradlew assembleDebug` 全部模块编译通过；仅中文文案。
 
+### 定位与隐私回归
+
+- [ ] 运行中连续使用不同历史点位，GPS 与 Network 均继续注入，无真实位置跳回。
+- [ ] 百度打开历史点位后首次蓝点回调不覆盖中心；点击「我的位置」后蓝点与中心重合。
+- [ ] GPS 注册成功、Network 注册失败时立即清理两个 provider；重试耗尽或中途停止后真实定位恢复。
+- [ ] 地图页按 Home 或进入系统设置时暂停蓝点定位，返回后恢复。
+- [ ] 检查合并 manifest 的 allowBackup=false，旧版备份及新版云备份/设备迁移规则排除点位数据库与设置文件。
+- [ ] `:core:common:testDebugUnitTest` 与 `:service:mock:testDebugUnitTest` 通过权限探测隔离和注册回滚测试。
+
 ## 9. 风险与边界
 
 | 风险 | 说明与对策 |
