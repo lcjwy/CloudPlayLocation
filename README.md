@@ -71,4 +71,4 @@ build-logic       convention 插件（library / library+compose）
 
 ## 版本
 
-版本号维护于 `app/build.gradle.kts`（`appVersionName` / `versionCode`），当前 **1.2.3 (6)**。
+版本号维护于 `app/build.gradle.kts`（`appVersionName` / `versionCode`），当前 **1.2.4 (7)**。
