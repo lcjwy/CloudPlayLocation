@@ -173,7 +173,11 @@ private fun MapLifecycle(adapter: MapAdapter?) {
                 }
             }
         owner.lifecycle.addObserver(observer)
-        if (!owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+        // 注册时补齐初始状态：adapter 异步创建完成时生命周期往往已 RESUMED，
+        // ON_RESUME 事件不会重发，观察者收不到——必须主动补一次 onResume
+        if (owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            adapter?.onResume()
+        } else {
             adapter?.onPause()
         }
         onDispose {

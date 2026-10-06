@@ -36,7 +36,7 @@
 # 正式包一键出包（签名 + 混淆 + 项目级 build 目录副本）
 ./gradlew release
 # 静态检查与测试
-./gradlew ktlintFormat detekt :core:common:testDebugUnitTest
+./gradlew ktlintFormat detekt :core:common:testDebugUnitTest :service:mock:testDebugUnitTest
 ```
 
 - APK 命名：`云游_版本_年月日_时分秒_构建类型.apk`，输出于项目级 `build/outputs/named/`。
