@@ -23,6 +23,7 @@ import android.util.Log
 import android.widget.Toast
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import com.chan.location.core.common.MockCheck
 import com.chan.location.core.data.model.SelectedPoint
 import java.util.Locale
 
@@ -128,7 +129,8 @@ class MockLocationService : Service() {
             if (startForegroundSafely()) {
                 // 注册失败不在这里终止：部分 ROM 在系统位置关闭期间会拒绝 addTestProvider，
                 // 且存在探测通过后注册瞬时失败的竞态。循环内按 1s 重试（期间开启系统位置
-                // 或恢复选择后自动恢复注入），连续超限才回滚停服（见 attemptRegister）
+                // 或恢复选择后自动恢复注入）；系统位置关闭期间不计失败，仅系统位置开启下
+                // 连续超限才回滚停服（见 RegistrationRetry）
                 scheduleLoop()
             } else {
                 // startForeground 失败必须立即停止：经 startForegroundService 拉起的服务
@@ -212,8 +214,13 @@ class MockLocationService : Service() {
         Runnable {
             if (providersAdded) {
                 injectAll()
-            } else {
+            } else if (MockCheck.isLocationEnabled(this)) {
                 regRetry.attempt { ensureProviders() }
+            } else {
+                // 系统位置关闭是可逆操作（用户省电习惯），与模拟应用被取消选择不同：
+                // 不计失败不放弃——若在此放弃停服，位置重开时真实定位直接暴露，
+                // 表现为"跳位置"。重开后下一轮 attempt 自动恢复注册与注入
+                regRetry.reset()
             }
             // 亮屏用设定频率；息屏钳制到 ≥1s，大幅减少唤醒与 IPC 次数
             val delay =
@@ -441,14 +448,16 @@ internal class TestProviders(
 
 /**
  * 注册重试状态机（仅注入线程访问）：按固定节奏重试，首次失败提示一次，
- * 连续 maxFailures 次失败回调终止——瞬时失败（系统位置关闭/mock 选择竞态）
- * 在条件恢复后自动通过，持续失败才回滚，避免"开关开了又弹回"。
+ * 连续 maxFailures 次失败回调终止——瞬时失败（mock 选择竞态）在条件恢复后
+ * 自动通过，持续失败才回滚，避免"开关开了又弹回"；系统位置关闭期间由调用方
+ * reset() 清零不计（可逆状态，永不触发放弃）。
  */
-private class RegistrationRetry(
+internal class RegistrationRetry(
     private val maxFailures: Int,
     private val retryIntervalMs: Long,
     private val onFirstFailure: () -> Unit,
     private val onGiveUp: () -> Unit,
+    private val clock: () -> Long = SystemClock::elapsedRealtime,
 ) {
     private var failures = 0
     private var lastAttemptAt = 0L
@@ -456,7 +465,7 @@ private class RegistrationRetry(
 
     /** 返回 true 表示注册成功 */
     fun attempt(register: () -> Boolean): Boolean {
-        val now = SystemClock.elapsedRealtime()
+        val now = clock()
         if (now - lastAttemptAt < retryIntervalMs) return false
         lastAttemptAt = now
         val success = register()
@@ -466,6 +475,11 @@ private class RegistrationRetry(
             onRegisterFailed()
         }
         return success
+    }
+
+    /** 清零失败计数但不尝试注册：用于系统位置关闭等可逆等待期 */
+    fun reset() {
+        failures = 0
     }
 
     private fun onRegisterFailed() {

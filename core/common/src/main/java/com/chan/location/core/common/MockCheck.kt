@@ -3,7 +3,9 @@ package com.chan.location.core.common
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.location.LocationManager
 import android.net.wifi.WifiManager
+import android.os.Build
 import android.provider.Settings
 
 /** 启用虚拟位置前的检查项（不校验系统 GPS 开关：推荐先启动虚拟位置、再手动开系统定位） */
@@ -45,6 +47,26 @@ object MockCheck {
     fun isWifiScanAlwaysAvailable(context: Context): Boolean {
         val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
         return runCatching { wm?.isScanAlwaysAvailable ?: false }.getOrDefault(false)
+    }
+
+    /** 系统位置总开关。注册重试用它区分"位置关闭（可逆，等待即可）"与
+     *  "模拟应用被取消选择（不可自愈，需放弃回滚）" */
+    fun isLocationEnabled(context: Context): Boolean {
+        val lm =
+            context.applicationContext.getSystemService(
+                Context.LOCATION_SERVICE,
+            ) as? LocationManager
+                ?: return false
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            lm.isLocationEnabled
+        } else {
+            @Suppress("DEPRECATION") // API 26–27 读位置模式的唯一途径
+            Settings.Secure.getInt(
+                context.contentResolver,
+                Settings.Secure.LOCATION_MODE,
+                Settings.Secure.LOCATION_MODE_OFF,
+            ) != Settings.Secure.LOCATION_MODE_OFF
+        }
     }
 
     private fun granted(
