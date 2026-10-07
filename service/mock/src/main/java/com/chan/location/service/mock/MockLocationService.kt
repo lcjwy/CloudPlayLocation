@@ -59,6 +59,9 @@ class MockLocationService : Service() {
     private var lastNotifiedLat = Double.NaN
     private var lastNotifiedLng = Double.NaN
 
+    /** 通知是否处于"等待系统位置"文案态：仅在翻转时更新，避免每秒刷通知 */
+    private var lastNotifiedWaiting = false
+
     /** 注册重试状态机：1s 节奏，首次失败提示一次，连续约 15s 失败回滚开关并停服 */
     private val regRetry =
         RegistrationRetry(
@@ -214,13 +217,28 @@ class MockLocationService : Service() {
         Runnable {
             if (providersAdded) {
                 injectAll()
-            } else if (MockCheck.isLocationEnabled(this)) {
-                regRetry.attempt { ensureProviders() }
             } else {
-                // 系统位置关闭是可逆操作（用户省电习惯），与模拟应用被取消选择不同：
-                // 不计失败不放弃——若在此放弃停服，位置重开时真实定位直接暴露，
-                // 表现为"跳位置"。重开后下一轮 attempt 自动恢复注册与注入
-                regRetry.reset()
+                val locationOff = !MockCheck.isLocationEnabled(this)
+                if (locationOff) {
+                    // 系统位置关闭是可逆操作（用户省电习惯），与模拟应用被取消选择不同：
+                    // 不计失败不放弃——若在此放弃停服，位置重开时真实定位直接暴露，
+                    // 表现为"跳位置"。重开后下一轮 attempt 自动恢复注册与注入
+                    regRetry.reset()
+                } else {
+                    regRetry.attempt { ensureProviders() }
+                }
+                // 等待期间通知改示等待文案（不误导为注入中）；翻转时才更新
+                if (locationOff != lastNotifiedWaiting) {
+                    lastNotifiedWaiting = locationOff
+                    try {
+                        NotificationManagerCompat.from(this).notify(
+                            NOTIFICATION_ID,
+                            buildNotification(waiting = locationOff),
+                        )
+                    } catch (ignore: SecurityException) {
+                        // 无通知权限时静默
+                    }
+                }
             }
             // 亮屏用设定频率；息屏钳制到 ≥1s，大幅减少唤醒与 IPC 次数
             val delay =
@@ -285,12 +303,22 @@ class MockLocationService : Service() {
         }
     }
 
-    private fun buildNotification(): Notification =
+    private fun buildNotification(waiting: Boolean = false): Notification =
         ServiceNotifications.build(
             this,
             CHANNEL_ID,
-            R.string.mock_notification_title,
-            String.format(Locale.US, "%.6f, %.6f", lat, lng),
+            titleRes =
+                if (waiting) {
+                    R.string.mock_notification_waiting_title
+                } else {
+                    R.string.mock_notification_title
+                },
+            contentText =
+                if (waiting) {
+                    getString(R.string.mock_waiting_location)
+                } else {
+                    String.format(Locale.US, "%.6f, %.6f", lat, lng)
+                },
         )
 
     override fun onDestroy() {

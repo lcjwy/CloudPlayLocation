@@ -2,6 +2,8 @@
 <resources>
     <string name="mock_notification_channel">云游服务</string>
     <string name="mock_notification_title">云游运行中</string>
+    <string name="mock_notification_waiting_title">云游等待系统位置</string>
+    <string name="mock_waiting_location">系统位置已关闭，开启后自动恢复虚拟位置</string>
     <string name="mock_no_permission">未获得模拟位置权限，请先在开发者选项中选择本应用</string>
     <string name="mock_api_error">设置虚拟位置失败：模拟位置API异常，请检查「模拟位置信息应用」选择或系统位置开关</string>
     <string name="mock_start_failed">虚拟位置服务启动失败，请重试</string>

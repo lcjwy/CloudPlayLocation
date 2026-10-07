@@ -197,7 +197,13 @@ object MockLocationManager {
     private fun mockCheckMessage(error: MockCheckError): String =
         when (error) {
             MockCheckError.LOCATION_PERMISSION -> "请先授予定位权限"
-            MockCheckError.MOCK_NOT_SELECTED -> "请先在开发者选项中选择本应用为模拟位置应用"
+            // 部分 ROM 系统位置关闭时探测即失败（应用其实已被选择）：先给位置开关线索
+            MockCheckError.MOCK_NOT_SELECTED ->
+                if (MockCheck.isLocationEnabled(appCtx)) {
+                    "请先在开发者选项中选择本应用为模拟位置应用"
+                } else {
+                    "请先开启系统位置后重试；若仍失败，请在开发者选项中选择本应用"
+                }
             MockCheckError.OVERLAY_PERMISSION -> "请先授予悬浮窗权限"
         }
 }
