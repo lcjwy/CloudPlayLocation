@@ -50,23 +50,26 @@ object MockCheck {
     }
 
     /** 系统位置总开关。注册重试用它区分"位置关闭（可逆，等待即可）"与
-     *  "模拟应用被取消选择（不可自愈，需放弃回滚）" */
+     *  "模拟应用被取消选择（不可自愈，需放弃回滚）"；读取异常按开启处理，
+     *  保守保留放弃兜底路径，避免误入永久等待 */
     fun isLocationEnabled(context: Context): Boolean {
         val lm =
             context.applicationContext.getSystemService(
                 Context.LOCATION_SERVICE,
             ) as? LocationManager
-                ?: return false
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            lm.isLocationEnabled
-        } else {
-            @Suppress("DEPRECATION") // API 26–27 读位置模式的唯一途径
-            Settings.Secure.getInt(
-                context.contentResolver,
-                Settings.Secure.LOCATION_MODE,
-                Settings.Secure.LOCATION_MODE_OFF,
-            ) != Settings.Secure.LOCATION_MODE_OFF
-        }
+                ?: return true
+        return runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                lm.isLocationEnabled
+            } else {
+                @Suppress("DEPRECATION") // API 26–27 读位置模式的唯一途径
+                Settings.Secure.getInt(
+                    context.contentResolver,
+                    Settings.Secure.LOCATION_MODE,
+                    Settings.Secure.LOCATION_MODE_OFF,
+                ) != Settings.Secure.LOCATION_MODE_OFF
+            }
+        }.getOrDefault(true)
     }
 
     private fun granted(

@@ -91,8 +91,8 @@ class MockLocationService : Service() {
                 intent: Intent,
             ) {
                 screenOn = intent.action == Intent.ACTION_SCREEN_ON
-                handler?.removeCallbacks(tick)
-                handler?.post(tick)
+                // 经 scheduleLoop 重排：顺带完成死线程重建
+                scheduleLoop()
             }
         }
 
@@ -203,6 +203,13 @@ class MockLocationService : Service() {
         }
 
     private fun scheduleLoop() {
+        // 线程可能已被历史异常杀死：looper 未 quit 时 post 仍返回成功入队，
+        // 但永远无人消费（服务存活、开关显示运行中，却永不注入，直到进程重启）。
+        // 检测并重建，保证换点/重发 intent 后注入可恢复
+        if (handlerThread?.isAlive != true) {
+            handlerThread = null
+            handler = null
+        }
         if (handlerThread == null) {
             val thread = HandlerThread("MockLocation", Process.THREAD_PRIORITY_FOREGROUND)
             thread.start()
@@ -213,32 +220,38 @@ class MockLocationService : Service() {
         handler?.post(tick)
     }
 
+    /** tick 整体兜底：任何异常都不能杀死注入线程——末尾的重新调度必须必然执行 */
+    @Suppress("TooGenericExceptionCaught")
     private val tick: Runnable =
         Runnable {
-            if (providersAdded) {
-                injectAll()
-            } else {
-                val locationOff = !MockCheck.isLocationEnabled(this)
-                if (locationOff) {
-                    // 系统位置关闭是可逆操作（用户省电习惯），与模拟应用被取消选择不同：
-                    // 不计失败不放弃——若在此放弃停服，位置重开时真实定位直接暴露，
-                    // 表现为"跳位置"。重开后下一轮 attempt 自动恢复注册与注入
-                    regRetry.reset()
+            try {
+                if (providersAdded) {
+                    injectAll()
                 } else {
-                    regRetry.attempt { ensureProviders() }
-                }
-                // 等待期间通知改示等待文案（不误导为注入中）；翻转时才更新
-                if (locationOff != lastNotifiedWaiting) {
-                    lastNotifiedWaiting = locationOff
-                    try {
-                        NotificationManagerCompat.from(this).notify(
-                            NOTIFICATION_ID,
-                            buildNotification(waiting = locationOff),
-                        )
-                    } catch (ignore: SecurityException) {
-                        // 无通知权限时静默
+                    val locationOff = !MockCheck.isLocationEnabled(this)
+                    if (locationOff) {
+                        // 系统位置关闭是可逆操作（用户省电习惯），与模拟应用被取消选择不同：
+                        // 不计失败不放弃——若在此放弃停服，位置重开时真实定位直接暴露，
+                        // 表现为"跳位置"。重开后下一轮 attempt 自动恢复注册与注入
+                        regRetry.reset()
+                    } else {
+                        regRetry.attempt { ensureProviders() }
+                    }
+                    // 等待期间通知改示等待文案（不误导为注入中）；翻转时才更新
+                    if (locationOff != lastNotifiedWaiting) {
+                        lastNotifiedWaiting = locationOff
+                        try {
+                            NotificationManagerCompat.from(this).notify(
+                                NOTIFICATION_ID,
+                                buildNotification(waiting = locationOff),
+                            )
+                        } catch (ignore: SecurityException) {
+                            // 无通知权限时静默
+                        }
                     }
                 }
+            } catch (e: Exception) {
+                Log.w(TAG, "tick failed", e)
             }
             // 亮屏用设定频率；息屏钳制到 ≥1s，大幅减少唤醒与 IPC 次数
             val delay =
