@@ -104,6 +104,10 @@ FOREGROUND_SERVICE_LOCATION / FOREGROUND_SERVICE_SPECIAL_USE / SYSTEM_ALERT_WIND
   - **启用态周期校验**：每 5s 校验双 provider 启用状态（系统位置开启前提下）——系统位置总开关往返后部分 ROM 把已注册 test provider 留在禁用态，注入不抛异常但无人消费（"运行中却不生效"，隔夜进程重启才恢复）；发现禁用即重新启用，provider 被注销（IAE）则复位注册状态走重注册。
 - `FloatingControlService`：前台服务 `foregroundServiceType="specialUse"`，在**虚拟位置运行中且悬浮窗开关开启**时运行（停止注入即随服务消失；注入服务被系统杀死后仍可经长按恢复启动），持有悬浮按钮，最小化通知（静音渠道）。
 - 设备重启后**不自动恢复**虚拟位置（不引入开机广播权限）；主页保留选中点显示，开关置关。
+- **可接受的停止/恢复路径**（防"虚拟位置一直无法使用"的兜底手段）：
+  - **杀后台**（系统回收、一键清理、划卡移除）：前台服务随进程终止，虚拟位置即停；下次打开 App 自动清理残留 TestProvider、开关校正为关并提示"应用退出后虚拟位置已自动停止"。
+  - **悬浮球长按 2 秒**：立即停止虚拟位置（服务直停 + TestProvider 兜底清理），悬浮按钮随之消失；再长按可重新启动。
+  - 两者均为有效恢复手段：任何"卡死不生效"的状态，杀后台重开或长按停止后重新开启即可恢复。
 
 ### 3.6 悬浮窗（单图标按钮）
 - 一个图标按钮，`TYPE_APPLICATION_OVERLAY`（flags: `FLAG_NOT_FOCUSABLE | FLAG_NOT_TOUCH_MODAL`），全局可拖动（rawX/rawY 差值 + `updateViewLayout`）。

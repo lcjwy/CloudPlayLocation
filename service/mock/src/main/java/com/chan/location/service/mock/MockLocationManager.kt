@@ -49,9 +49,14 @@ object MockLocationManager {
         settings = settingsRepository
         reconcileOnChange()
         scope.launch {
-            // 进程被杀后前台服务不会复活，进程重启时校正残留的启用状态
+            // 进程被杀后前台服务不会复活，进程重启时校正残留的启用状态。
+            // 杀后台（系统回收/一键清理/划卡）即停服是官方可接受的停止路径：
+            // 校正的同时明确提示，避免用户困惑"开关怎么自己关了"
             if (settings.mockEnabled.first() && !MockLocationService.isAlive) {
                 settings.setMockEnabled(false)
+                mainHandler.post {
+                    Toast.makeText(appCtx, R.string.mock_stopped_on_exit, Toast.LENGTH_LONG).show()
+                }
             }
             // init 时本服务必然未运行：进程被杀/崩溃时 onDestroy 的 removeTestProvider
             // 不会执行，残留 TestProvider 会持续压制真实定位（表现为"已关闭仍在生效"），
