@@ -49,7 +49,7 @@
 - 运行中换点/改频率 = 重发 intent（`onStartCommand` 更新并重排循环）；服务无 BIND，状态经 companion `isAlive` 暴露。
 - **注册阶段失败 ≠ 注入阶段失败**：注册失败（`addTestProvider` 抛异常，部分 ROM 在系统位置关闭期间会拒绝，或 mock 选择竞态/瞬时 binder 失败）**不立即停服**——前台服务照常运行，注入循环内按 1s 重试注册（期间恢复条件后自动恢复注入）；**系统位置关闭期间由 `MockCheck.isLocationEnabled` 判定后 `RegistrationRetry.reset()` 清零计数、永不放弃**（用户可逆操作，防止位置重开时真实定位暴露导致"跳位置"）；仅系统位置开启下连续 15 次（约 15s）失败才 Toast + `MockLocationManager.onMockProvidersFailed()` 回滚开关 + stopSelf，不留「运行中」通知却永不注入的假运行态。注入阶段的 `SecurityException` 则容忍重试（见上）。注册异常类型 ROM 差异大，`ensureProviders`/`enableIfDisabled` 一律按宽捕获处理。
 - 注册任一步失败立即回滚双 provider；销毁时无条件清理，注册与销毁加锁防止清理后再注册。注入发现 provider 丢失时复位注册状态，由重试循环恢复。
-- 双 provider 原因：部分应用只读 GPS、部分融合 Network，双注入保证一致。
+- 双 provider 原因：部分应用只读 GPS、部分融合 Network，双注入保证一致；GMS 设备额外尽力注册 fused（`FusedLocationProviderClient` 走融合通道，不 mock 则旁路替身），失败可容忍不参与成败判定。每 5s 健康检查（系统位置开启时）：`reenableIfNeeded` 修复禁用态/检测注销，`injectionLanded` 比对 GPS lastKnown 与目标坐标校验注入真实落地。
 
 ### 2.3 坐标转换（:core:common CoordUtils）
 - 全链路内部一律 WGS84；仅百度显示边界做 WGS84↔BD09LL。

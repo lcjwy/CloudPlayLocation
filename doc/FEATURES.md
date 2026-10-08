@@ -32,7 +32,8 @@
 
 **代码入口**：`MockLocationService.kt`（前台注入服务）、`MockLocationManager.kt`（启停状态机）
 
-- **注入机制**：前台服务（`foregroundServiceType="location"`）注册 GPS + Network 双 TestProvider（替身真实 provider，**运行期间压制真实定位并注入虚拟坐标**）；HandlerThread 循环按设定频率（10–100ms）依次注入两点。Location 字段填全（accuracy/altitude/bearing/speed/time/elapsedRealtimeNanos/satellites=7）。
+- **注入机制**：前台服务（`foregroundServiceType="location"`）注册 GPS + Network 双 TestProvider（替身真实 provider，**运行期间压制真实定位并注入虚拟坐标**），GMS 设备额外尽力注册 fused provider（拦 `FusedLocationProviderClient` 旁路，失败可容忍）；HandlerThread 循环按设定频率（10–100ms）依次注入。Location 字段填全（accuracy/altitude/bearing/speed/time/elapsedRealtimeNanos/satellites=7）。
+- **注入落地自检**：每 5s 比对 GPS lastKnown 与目标，连续约 15s 不一致 → Toast 提示关闭「Wi-Fi 扫描/提高定位精确度」（融合定位/Wi-Fi 扫描回填真实位置的典型症状），整个服务周期提示一次。
 - **运行中通知**：显示当前坐标，点击回主页；仅坐标变化时更新（setOnlyAlertOnce）。
 - **耗电优化**：息屏注入间隔自动钳制到 ≥1s，亮屏立即恢复设定值。
 - **容错语义（关键）**：

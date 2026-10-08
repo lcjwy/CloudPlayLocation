@@ -26,6 +26,7 @@ import androidx.core.content.ContextCompat
 import com.chan.location.core.common.MockCheck
 import com.chan.location.core.data.model.SelectedPoint
 import java.util.Locale
+import kotlin.math.abs
 
 /**
  * 虚拟位置前台服务：注册 GPS/Network 双 TestProvider，按设置频率循环注入 WGS84 坐标。
@@ -55,6 +56,16 @@ class MockLocationService : Service() {
     // 主线程（onStartCommand）与注入线程（attemptRegister）共同读写
     @Volatile
     private var providersAdded = false
+
+    /** fused provider 是否已注册（仅 GMS 设备存在该 provider，注册失败可容忍） */
+    @Volatile
+    private var fusedSupported = false
+
+    /** 注入落地校验连续未命中次数/是否已提示（仅注入线程访问，提示整个周期一次） */
+    private var ineffectiveStrikes = 0
+
+    @Volatile
+    private var ineffectiveShown = false
 
     private var lastNotifiedLat = Double.NaN
     private var lastNotifiedLng = Double.NaN
@@ -193,15 +204,17 @@ class MockLocationService : Service() {
         synchronized(providerLock) {
             if (stopping) return@synchronized false
             if (providersAdded) return@synchronized true
+            val tp = TestProviders(lm)
             providersAdded =
                 try {
-                    TestProviders(lm).addAll()
+                    tp.addAll()
                 } catch (e: Exception) {
                     // ROM 差异大：SecurityException / IllegalArgumentException / 其它
                     // 均有出现（尤其系统位置关闭时），统一按注册失败处理，由重试机制兜底
                     Log.w(TAG, "addTestProvider failed", e)
                     false
                 }
+            fusedSupported = providersAdded && tp.fusedRegistered
             providersAdded
         }
 
@@ -271,16 +284,24 @@ class MockLocationService : Service() {
         val elapsed = SystemClock.elapsedRealtimeNanos()
         injectOne(LocationManager.NETWORK_PROVIDER, NETWORK_ACCURACY, now, elapsed)
         injectOne(LocationManager.GPS_PROVIDER, GPS_ACCURACY, now, elapsed)
-        // 周期校验启用态：系统位置总开关往返后部分 ROM 把已注册的 test provider
-        // 留在禁用态——注入不抛异常但无人消费，服务"运行中"却不生效直到进程重启
-        // （隔夜复现）；发现注销（IAE）则复位注册状态走重注册
+        if (fusedSupported) injectOne(LocationManager.FUSED_PROVIDER, GPS_ACCURACY, now, elapsed)
+        // 5s 周期健康检查（系统位置开启时）：启用态修复 + 注入落地校验——
+        // 开关位置后部分 ROM 把 provider 留在禁用态（不抛异常但无人消费）；
+        // GMS 融合定位/Wi-Fi 扫描旁路则表现为"注入正常但应用仍显示真实位置"
         val clock = SystemClock.elapsedRealtime()
         if (clock - lastEnableCheckAt >= PROVIDER_ENABLE_CHECK_MS &&
             MockCheck.isLocationEnabled(this)
         ) {
             lastEnableCheckAt = clock
-            // 全局位置关闭时 isProviderEnabled 恒为 false，不能据此判禁用
-            if (!TestProviders(lm).reenableIfNeeded()) providersAdded = false
+            val tp = TestProviders(lm)
+            if (!tp.reenableIfNeeded()) providersAdded = false
+            if (tp.injectionLanded(lat, lng)) {
+                ineffectiveStrikes = 0
+            } else if (++ineffectiveStrikes >= INEFFECTIVE_STRIKES && !ineffectiveShown) {
+                ineffectiveShown = true
+                Log.w(TAG, "injection not landing: target=($lat, $lng)")
+                Toast.makeText(this, R.string.mock_not_effective, Toast.LENGTH_LONG).show()
+            }
         }
         if (lat == lastNotifiedLat && lng == lastNotifiedLng) return
         try {
@@ -317,8 +338,12 @@ class MockLocationService : Service() {
                 }
             lm.setTestProviderLocation(provider, location)
         } catch (ignore: IllegalArgumentException) {
-            // provider 丢失后重新注册；停服时循环已被移除。
-            providersAdded = false
+            // provider 丢失后重新注册；fused 注销只关 fused，不牵连主注册
+            if (provider == LocationManager.FUSED_PROVIDER) {
+                fusedSupported = false
+            } else {
+                providersAdded = false
+            }
         } catch (e: Exception) {
             // 部分ROM在系统位置关闭等场景抛出类型不一的异常（不止 SecurityException）：
             // 容忍并继续（系统位置开启后注入自动恢复）；提示与日志整个服务周期仅一次
@@ -385,6 +410,9 @@ class MockLocationService : Service() {
         /** provider 启用态校验周期：5s 一次足够，避免每 tick 都做 binder 调用 */
         private const val PROVIDER_ENABLE_CHECK_MS = 5_000L
 
+        /** 注入落地连续未命中阈值：3 次（约 15s）判定被旁路，提示一次 */
+        private const val INEFFECTIVE_STRIKES = 3
+
         /** 注册重试：1s 节奏，连续 15 次（约 15s）失败判定为持续失败 */
         private const val REG_RETRY_INTERVAL_MS = 1_000L
         private const val REG_MAX_FAILURES = 15
@@ -411,11 +439,19 @@ class MockLocationService : Service() {
 internal class TestProviders(
     private val lm: LocationManager,
 ) {
+    /** fused provider 是否注册成功（尽力而为，不参与 addAll 成败判定） */
+    var fusedRegistered = false
+        private set
+
     /** 注销残留 provider；未注册/未授权，以及系统位置关闭时部分 ROM 抛出的
      *  异常类型不一，逐个 provider 独立吞掉——任一失败不能中断另一个的清理 */
     @Suppress("TooGenericExceptionCaught")
     fun removeAll() {
-        for (provider in arrayOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)) {
+        for (provider in arrayOf(
+            LocationManager.GPS_PROVIDER,
+            LocationManager.NETWORK_PROVIDER,
+            LocationManager.FUSED_PROVIDER,
+        )) {
             try {
                 lm.removeTestProvider(provider)
             } catch (ignore: Exception) {
@@ -431,6 +467,7 @@ internal class TestProviders(
             addNetwork()
             enableIfDisabled(LocationManager.GPS_PROVIDER)
             enableIfDisabled(LocationManager.NETWORK_PROVIDER)
+            tryRegisterFused()
             registrationComplete = true
             return true
         } finally {
@@ -455,6 +492,17 @@ internal class TestProviders(
             }
         }
         return allRegistered
+    }
+
+    /** 注入落地校验：GPS lastKnown 与目标一致（±约 10m）视为生效。返回 false 说明
+     *  注入被旁路（GMS 融合定位优先/Wi-Fi 扫描回填真实定位）或 provider 已失效，
+     *  供服务侧连续计数后明确告警——不再静默"运行中却不生效" */
+    fun injectionLanded(
+        lat: Double,
+        lng: Double,
+    ): Boolean {
+        val fix = runCatching { lm.getLastKnownLocation(LocationManager.GPS_PROVIDER) }.getOrNull()
+        return fix != null && abs(fix.latitude - lat) < 1e-4 && abs(fix.longitude - lng) < 1e-4
     }
 
     /** 废弃的 10 参重载 + 常量（Gogogo 同款，含 API 31+）：Builder 新重载在部分 ROM 行为不一致 */
@@ -506,6 +554,34 @@ internal class TestProviders(
                 android.location.Criteria.ACCURACY_COARSE
             },
         )
+    }
+
+    /** GMS 融合定位旁路补丁：很多 App 走 FusedLocationProviderClient（fused），
+     *  只替身 GPS/Network 拦不住它——表现为"部分应用仍显示真实位置"。fused 仅
+     *  GMS 设备存在（无 GMS 的国产 ROM 无此 provider，注册即失败），失败可容忍、
+     *  不参与 addAll 成败判定 */
+    @Suppress("DEPRECATION")
+    private fun tryRegisterFused() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        fusedRegistered =
+            try {
+                // addTestProvider 失败以异常表达（无返回值），调用成功即已注册
+                lm.addTestProvider(
+                    LocationManager.FUSED_PROVIDER,
+                    true,
+                    true,
+                    false,
+                    false,
+                    true,
+                    true,
+                    true,
+                    ProviderProperties.POWER_USAGE_LOW,
+                    ProviderProperties.ACCURACY_FINE,
+                )
+                true
+            } catch (ignore: Exception) {
+                false
+            }
     }
 
     /** API 31+ 注册即启用；仅当系统仍报禁用时补一次显式启用（系统位置关闭常见）。
