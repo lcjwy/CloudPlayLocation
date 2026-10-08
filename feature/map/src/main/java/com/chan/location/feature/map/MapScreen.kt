@@ -225,6 +225,7 @@ private suspend fun buildMapSetup(
     val source = settings.mapSource.first()
     val privacy = settings.privacyAgreed.first() == true
     val selected = settings.selectedPoint.first()
+    val baiduKey = settings.baiduKey.first().takeIf { it.isNotBlank() }
     val focus = focusPointId?.let { repo.byId(it) }
     val initial =
         focus?.let { GeoLatLng(it.wgsLat, it.wgsLng) }
@@ -242,6 +243,7 @@ private suspend fun buildMapSetup(
                 zoom = DEFAULT_ZOOM,
                 myLocationEnabled = withMyLocation,
                 privacyAgreed = privacy,
+                baiduKey = baiduKey,
             ),
         )
     return MapSetup(adapter, initial, DEFAULT_ZOOM, withMyLocation, focus)

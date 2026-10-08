@@ -56,6 +56,8 @@ data class MapConfig(
     val myLocationEnabled: Boolean = false,
     /** 未同意隐私政策时，实现应回退到无需隐私初始化的地图源 */
     val privacyAgreed: Boolean = false,
+    /** 用户自定义百度地图 Key（空串/ null = 使用应用内置 Key），仅百度实现消费 */
+    val baiduKey: String? = null,
 )
 
 /** 由 :app 提供具体实现的选择与注入 */

@@ -68,7 +68,7 @@ MapAdapterFactory: (context, MapConfig) -> MapAdapter，由 :app 提供实现选
 - `MapConfig.source` 决定实现；未同意隐私 → :app 工厂强制回退 osmdroid。
 - `onCenterChanged`/`onZoomChanged` 双回调：百度程序化移动（`moveCamera`/`moveToMyLocation`）直接回报精确目标中心并抑制动画期间抖动；Finish 在手势结束时全量回报，程序化落点后只补报缩放（比例尺依赖）——不回写 BD09→WGS 往返换算值，避免米级漂移覆盖已选点精确坐标；OSM 经 MapListener 120ms 防抖回报。
 - 蓝点更新不自动移动相机，保留初始选中点/历史点；点击「我的位置」时才将 BD09 定位结果转成 WGS84 并回报。地图生命周期监听页面 ON_RESUME/ON_PAUSE，后台停止定位客户端。
-- 百度懒初始化：`BaiduSdkInitializer.ensureInit(context, privacyAgreed)` 幂等，仅在工厂创建百度 Adapter 时调用，先于 MapView 创建；`setAgreePrivacy(true)` + `initialize` + `setCoordType(BD09LL)`。
+- 百度懒初始化：`BaiduSdkInitializer.ensureInit(context, privacyAgreed, customKey)` 幂等，仅在工厂创建百度 Adapter 时调用，先于 MapView 创建；`setAgreePrivacy(true)` + `initialize` + `setCoordType(BD09LL)`。自定义 Key 经 `MapConfig.baiduKey`（MapScreen 从 DataStore 读取）传入，非空时 `SDKInitializer.setApiKey` 先于 initialize 覆盖内置 Key；SDK 进程级单次初始化，改 Key 重启应用生效。
 - 百度显示 `wgs2bd09`、回调 `bd092wgs`；`programmaticMove` 标志抑制程序化相机移动期间的回调抖动，手势起始（`REASON_GESTURE`）强制复位——程序化动画无回调时（已在目标点/缩放极限）标志等不到 Finish 复位，不复位会导致拖动不再回报中心点。
 - osmdroid：WGS84 直通；`Configuration` 缓存指向应用私有目录（免存储权限）；中心点回调 120ms 防抖。
 - UI（Compose）：`AndroidView` 包 MapView + 中心十字准星 Canvas 覆盖层 + 底部坐标面板 + 右侧缩放按钮 + 标题栏下方比例尺（`MapScaleBar.kt`，墨卡托米/像素公式实时换算），两源共用。入场统一默认 zoom 17（约 200m 级）并居中目标点（选中点/`pid`）；不设近景级别——米级坐标系换算误差（BD09 往返、SDK 蓝点换算常数差异）在近景下肉眼可见。

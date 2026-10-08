@@ -6,21 +6,31 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.chan.location.core.common.MapSource
 import com.chan.location.core.common.MockCheck
@@ -93,6 +103,64 @@ internal fun IntervalSection(
         modifier = Modifier.padding(horizontal = 16.dp),
     )
     Tip("间隔越小定位刷新越快，耗电也越高")
+}
+
+/** 百度地图 Key：默认掩码显示，点眼睛图标切换明文；内置 Key 永不显示 */
+@Composable
+internal fun BaiduKeySection(
+    current: String,
+    onSave: (String) -> Unit,
+) {
+    HorizontalDivider()
+    SectionTitle("百度地图 Key")
+    // 字段初值取当前存储值；保存后由 DataStore 回流刷新状态行，不回写字段避免打断输入
+    var text by rememberSaveable { mutableStateOf(current) }
+    var visible by rememberSaveable { mutableStateOf(false) }
+    KeyInputField(
+        text = text,
+        onTextChange = { text = it },
+        visible = visible,
+        onToggleVisible = { visible = !visible },
+    )
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TextButton(onClick = { onSave(text) }) { Text("保存") }
+        Text(
+            text = if (current.isBlank()) "当前使用内置 Key（不显示）" else "已设置自定义 Key",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    Tip("替换内置 Key 用于自己的百度应用；默认圆点掩码，点右侧图标查看；重启应用生效，保存空白恢复内置")
+}
+
+/** 掩码输入框：眼睛图标切换明文（Key 属敏感信息，默认不回显） */
+@Composable
+private fun KeyInputField(
+    text: String,
+    onTextChange: (String) -> Unit,
+    visible: Boolean,
+    onToggleVisible: () -> Unit,
+) {
+    OutlinedTextField(
+        value = text,
+        onValueChange = onTextChange,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        label = { Text("自定义 Key（留空使用内置）") },
+        singleLine = true,
+        visualTransformation =
+            if (visible) VisualTransformation.None else PasswordVisualTransformation(),
+        trailingIcon = {
+            IconButton(onClick = onToggleVisible) {
+                Icon(
+                    if (visible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                    contentDescription = if (visible) "隐藏 Key" else "显示 Key",
+                )
+            }
+        },
+    )
 }
 
 @Composable

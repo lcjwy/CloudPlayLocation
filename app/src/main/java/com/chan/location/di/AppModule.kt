@@ -24,6 +24,7 @@ val appModule =
                         BaiduSdkInitializer.ensureInit(
                             context.applicationContext,
                             config.privacyAgreed,
+                            config.baiduKey,
                         )
                 if (useBaidu) BaiduMapAdapter(context, config) else OsmMapAdapter(context, config)
             }

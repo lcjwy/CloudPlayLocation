@@ -26,6 +26,7 @@ class SettingsRepository(
         val selName = stringPreferencesKey("sel_name")
         val selLat = stringPreferencesKey("sel_lat")
         val selLng = stringPreferencesKey("sel_lng")
+        val baiduKey = stringPreferencesKey("baidu_key")
     }
 
     val mapSource: Flow<MapSource> =
@@ -53,6 +54,9 @@ class SettingsRepository(
             SelectedPoint(p[K.selName].orEmpty(), lat, lng)
         }
 
+    /** 用户自定义百度地图 Key；空串 = 未设置（使用应用内置 Key） */
+    val baiduKey: Flow<String> = context.dataStore.data.map { it[K.baiduKey].orEmpty() }
+
     suspend fun setMapSource(source: MapSource) {
         context.dataStore.edit { it[K.mapSource] = source.name }
     }
@@ -73,6 +77,14 @@ class SettingsRepository(
 
     suspend fun setMockEnabled(running: Boolean) {
         context.dataStore.edit { it[K.mockEnabled] = running }
+    }
+
+    /** 保存自定义百度 Key；空白视为清除（恢复内置 Key） */
+    suspend fun setBaiduKey(key: String) {
+        context.dataStore.edit {
+            val trimmed = key.trim()
+            if (trimmed.isEmpty()) it.remove(K.baiduKey) else it[K.baiduKey] = trimmed
+        }
     }
 
     suspend fun setSelectedPoint(point: SelectedPoint?) {

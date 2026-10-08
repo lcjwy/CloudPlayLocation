@@ -46,6 +46,7 @@ fun SettingsScreen(
     val interval by settingsRepository.intervalMs.collectAsStateWithLifecycle(100)
     val floating by settingsRepository.floatingEnabled.collectAsStateWithLifecycle(false)
     val privacy by settingsRepository.privacyAgreed.collectAsStateWithLifecycle(null)
+    val baiduKey by settingsRepository.baiduKey.collectAsStateWithLifecycle("")
     val controller = remember { SettingsController(scope, settingsRepository) }
 
     Scaffold(
@@ -66,6 +67,7 @@ fun SettingsScreen(
             interval = interval,
             floating = floating,
             privacy = privacy,
+            baiduKey = baiduKey,
             modifier = Modifier.padding(padding).fillMaxSize(),
         )
     }
@@ -79,6 +81,7 @@ private fun SettingsContent(
     interval: Int,
     floating: Boolean,
     privacy: Boolean?,
+    baiduKey: String,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -93,6 +96,7 @@ private fun SettingsContent(
             onPrivacyRequired = { showPrivacy = true },
         )
         IntervalSection(interval, onChange = controller::setInterval)
+        BaiduKeySection(current = baiduKey, onSave = controller::setBaiduKey)
         FloatingSection(floating) { want ->
             if (want && !Settings.canDrawOverlays(context)) {
                 pendingOverlayGrant = true
@@ -149,6 +153,10 @@ private class SettingsController(
 
     fun setInterval(ms: Int) {
         scope.launch { repo.setIntervalMs(ms) }
+    }
+
+    fun setBaiduKey(key: String) {
+        scope.launch { repo.setBaiduKey(key) }
     }
 
     fun setFloating(enabled: Boolean) {

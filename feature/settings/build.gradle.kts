@@ -17,4 +17,6 @@ dependencies {
     implementation(project(":core:common"))
     implementation(project(":core:data"))
     implementation(project(":core:ui"))
+    // Visibility 眼睛图标在 extended 包，BOM 托管版本；release 由 R8 裁剪未用图标
+    implementation(libs.androidx.compose.icons.extended)
 }
