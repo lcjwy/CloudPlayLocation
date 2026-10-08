@@ -439,6 +439,10 @@ class MockLocationService : Service() {
 internal class TestProviders(
     private val lm: LocationManager,
 ) {
+    private companion object {
+        private const val TAG = "MockLocation"
+    }
+
     /** fused provider 是否注册成功（尽力而为，不参与 addAll 成败判定） */
     var fusedRegistered = false
         private set
@@ -494,15 +498,36 @@ internal class TestProviders(
         return allRegistered
     }
 
-    /** 注入落地校验：GPS lastKnown 与目标一致（±约 10m）视为生效。返回 false 说明
-     *  注入被旁路（GMS 融合定位优先/Wi-Fi 扫描回填真实定位）或 provider 已失效，
-     *  供服务侧连续计数后明确告警——不再静默"运行中却不生效" */
+    /** 注入落地校验：GPS lastKnown 带系统 mock 标记、或坐标与目标一致（±约 10m）
+     *  视为生效。优先看 mock 标记——本应用"精确位置"关闭时系统对读取的坐标做
+     *  公里级加噪，坐标比对必然失败造成误报；mock 标记不受加噪影响，且能同时
+     *  识别"读到的是真实定位"（被旁路）与"读到的是替身"（注入正常） */
     fun injectionLanded(
         lat: Double,
         lng: Double,
     ): Boolean {
         val fix = runCatching { lm.getLastKnownLocation(LocationManager.GPS_PROVIDER) }.getOrNull()
-        return fix != null && abs(fix.latitude - lat) < 1e-4 && abs(fix.longitude - lng) < 1e-4
+        if (fix == null) return false
+        val fromMock =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                fix.isMock
+            } else {
+                @Suppress("DEPRECATION")
+                fix.isFromMockProvider
+            }
+        val matched = abs(fix.latitude - lat) < 1e-4 && abs(fix.longitude - lng) < 1e-4
+        if (!fromMock || !matched) {
+            Log.w(
+                TAG,
+                "injection check: fromMock=$fromMock matched=$matched fix=$fix " +
+                    "gps=${runCatching {
+                        lm.isProviderEnabled(
+                            LocationManager.GPS_PROVIDER,
+                        )
+                    }.getOrDefault(false)}",
+            )
+        }
+        return fromMock || matched
     }
 
     /** 废弃的 10 参重载 + 常量（Gogogo 同款，含 API 31+）：Builder 新重载在部分 ROM 行为不一致 */
