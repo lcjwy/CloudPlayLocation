@@ -16,7 +16,7 @@ val localProps =
     }
 
 // 输出 APK 命名（下划线连接，不带空格）：云游_版本_年月日_时分秒_构建类型.apk
-val appVersionName = "1.2.6"
+val appVersionName = "1.2.7"
 val appName = "云游"
 
 /** APK 文件名时间戳：年月日_时分秒（本机时区） */
@@ -35,7 +35,7 @@ android {
         applicationId = "com.chan.location"
         minSdk = 26
         targetSdk = 36
-        versionCode = 9
+        versionCode = 10
         versionName = appVersionName
         manifestPlaceholders["baiduMapKey"] =
             localProps.getProperty("BAIDU_MAP_KEY") ?: "PLEASE_APPLY_BAIDU_AK"
