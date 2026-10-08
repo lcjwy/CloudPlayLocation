@@ -41,6 +41,7 @@
   - 权限探测（`MockLocationAccess`）先定论后清理，且两个清理调用各自兜底——防止探测残留 TestProvider 全局压制真实 GPS。
   - 停止链路：`removeTestProvider` 逐 provider 独立吞掉全部异常（系统位置关闭时部分 ROM 抛类型不一）；`stop()` 直停双服务 + 兜底清理，不依赖收集器存活与 `onDestroy` 成功；App 启动无条件清理一次进程残留。
   - 循环自愈：tick 整体异常兜底（异常只记日志不杀线程）；`scheduleLoop` 检测注入线程死亡（`isAlive`）并重建——线程死后 post 静默失效，换点/重发 intent 无法恢复注入，表现为"设置成功一次后失效、进程重启才恢复"。
+  - 启用态校验：每 5s（系统位置开启时）校验双 provider 启用状态，禁用即重新启用、注销（IAE）即复位重注册——防系统位置开关往返后 provider 留在禁用态（注入不报错但无人消费）。
 - **状态机（MockLocationManager）**：以 DataStore 组合流（悬浮窗开关, 运行开关, 频率）为唯一事实源统一启停；进程重启校正残留开关；换点/改频率直接重发 intent；FGS 启动失败（异常类型全量接住，防 reconcile 收集器被杀死后启停静默失效）按服务回滚各自开关（悬浮窗失败不误关虚拟位置）。
 
 ## 4. 悬浮窗（:service:mock）

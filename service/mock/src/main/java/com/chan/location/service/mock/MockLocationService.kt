@@ -62,6 +62,9 @@ class MockLocationService : Service() {
     /** 通知是否处于"等待系统位置"文案态：仅在翻转时更新，避免每秒刷通知 */
     private var lastNotifiedWaiting = false
 
+    /** 上次 provider 启用态校验时刻（仅注入线程访问） */
+    private var lastEnableCheckAt = 0L
+
     /** 注册重试状态机：1s 节奏，首次失败提示一次，连续约 15s 失败回滚开关并停服 */
     private val regRetry =
         RegistrationRetry(
@@ -268,6 +271,17 @@ class MockLocationService : Service() {
         val elapsed = SystemClock.elapsedRealtimeNanos()
         injectOne(LocationManager.NETWORK_PROVIDER, NETWORK_ACCURACY, now, elapsed)
         injectOne(LocationManager.GPS_PROVIDER, GPS_ACCURACY, now, elapsed)
+        // 周期校验启用态：系统位置总开关往返后部分 ROM 把已注册的 test provider
+        // 留在禁用态——注入不抛异常但无人消费，服务"运行中"却不生效直到进程重启
+        // （隔夜复现）；发现注销（IAE）则复位注册状态走重注册
+        val clock = SystemClock.elapsedRealtime()
+        if (clock - lastEnableCheckAt >= PROVIDER_ENABLE_CHECK_MS &&
+            MockCheck.isLocationEnabled(this)
+        ) {
+            lastEnableCheckAt = clock
+            // 全局位置关闭时 isProviderEnabled 恒为 false，不能据此判禁用
+            if (!TestProviders(lm).reenableIfNeeded()) providersAdded = false
+        }
         if (lat == lastNotifiedLat && lng == lastNotifiedLng) return
         try {
             NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, buildNotification())
@@ -368,6 +382,9 @@ class MockLocationService : Service() {
         private const val SATELLITES = 7
         private const val SCREEN_OFF_MIN_INTERVAL_MS = 1000L
 
+        /** provider 启用态校验周期：5s 一次足够，避免每 tick 都做 binder 调用 */
+        private const val PROVIDER_ENABLE_CHECK_MS = 5_000L
+
         /** 注册重试：1s 节奏，连续 15 次（约 15s）失败判定为持续失败 */
         private const val REG_RETRY_INTERVAL_MS = 1_000L
         private const val REG_MAX_FAILURES = 15
@@ -420,6 +437,24 @@ internal class TestProviders(
             // 注册未全部完成时回滚，避免 GPS 成功、Network 失败留下替身。
             if (!registrationComplete) removeAll()
         }
+    }
+
+    /** 校验双 provider 启用态并重新启用（调用方须保证系统位置已开启，否则恒判禁用）。
+     *  返回 false 表示有 provider 已被系统注销，调用方应复位注册状态走重注册 */
+    @Suppress("TooGenericExceptionCaught")
+    fun reenableIfNeeded(): Boolean {
+        var allRegistered = true
+        for (provider in arrayOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)) {
+            if (runCatching { lm.isProviderEnabled(provider) }.getOrDefault(true)) continue
+            try {
+                lm.setTestProviderEnabled(provider, true)
+            } catch (ignore: IllegalArgumentException) {
+                allRegistered = false
+            } catch (ignore: Exception) {
+                // ROM 差异：本轮启用失败，下个校验周期重试
+            }
+        }
+        return allRegistered
     }
 
     /** 废弃的 10 参重载 + 常量（Gogogo 同款，含 API 31+）：Builder 新重载在部分 ROM 行为不一致 */
