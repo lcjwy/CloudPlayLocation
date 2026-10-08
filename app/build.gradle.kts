@@ -86,10 +86,12 @@ android {
 }
 
 androidComponents {
-    // AGP9 已移除 outputFileName 原地改名；改为构建后复制下划线命名副本。
-    // 原名 app-debug.apk 保留：IDE 部署依赖 output-metadata.json 指向原名。
+    // AGP9 已移除 outputFileName 原地改名；改为构建后复制下划线命名副本（仅 release）。
+    // debug 保持 app-debug.apk 原名：日常调试产物，无需交付命名；
+    // 原名 app-release.apk 保留：IDE 部署依赖 output-metadata.json 指向原名。
     // 副本输出到项目级 build 目录（rootProject.layout），交付物不混在 module 产物里。
     onVariants { variant ->
+        if (variant.name != "release") return@onVariants
         val variantName = variant.name
         val cap = variantName.replaceFirstChar { it.uppercase() }
         val taskName = "copyApk$cap"
