@@ -51,6 +51,24 @@
 - 注册任一步失败立即回滚双 provider；销毁时无条件清理，注册与销毁加锁防止清理后再注册。注入发现 provider 丢失时复位注册状态，由重试循环恢复。
 - 双 provider 原因：部分应用只读 GPS、部分融合 Network，双注入保证一致；GMS 设备额外尽力注册 fused（`FusedLocationProviderClient` 走融合通道，不 mock 则旁路替身），失败可容忍不参与成败判定。注册后 `kickProvider` disable→enable 翻转广播可用性变化，唤醒启动前已休眠的定位订阅方。每 5s 健康检查（系统位置开启时）**只在注入未落地时介入**（工作正常时做启用态翻转只会扰动订阅，表现为"开始正常几秒后失效"）：先 `injectionLanded`（mock 标记 + 坐标比对），未落地才 `reenableIfNeeded` 修复禁用态/检测注销，修复后复检仍失败才连续计数告警。
 
+#### 注入域时间机制一览（全部由注入线程单一 tick 驱动，互为条件、不并发竞争）
+
+| 机制 | 常量/值 | 触发前提 | 作用 | 持续后的表现 |
+|---|---|---|---|---|
+| 注入循环 tick | `intervalMs` 10–100ms（设置项，默认 100） | 服务运行 | 注入 GPS/Network(/fused) | — |
+| 息屏降频 | `SCREEN_OFF_MIN_INTERVAL_MS` 1000ms | 息屏 | tick 钳制到 ≥1s 省电 | 注入变慢但不中断 |
+| 注册重试 | `REG_RETRY_INTERVAL_MS` 1000ms 节流 | 未注册且系统位置开启 | 尝试 `ensureProviders` | — |
+| 注册放弃 | `REG_MAX_FAILURES` 15 次 × 1s ≈ **15s** | 系统位置**开启**下连续注册失败 | 回滚开关 + 停服（模拟应用被取消选择等不可自愈场景） | 开关弹回关 + Toast |
+| 位置关闭等待 | `RegistrationRetry.reset()` 每 tick | 未注册且系统位置关闭 | 清零失败计数、永不放弃（可逆等待） | 通知显示"等待系统位置" |
+| 健康检查 | `PROVIDER_ENABLE_CHECK_MS` 5000ms | **已注册**且系统位置开启 | 落地校验（只读）；未落地才启用态修复 | — |
+| 未落地告警 | `INEFFECTIVE_STRIKES` 3 次 × 5s ≈ **15s** | 健康检查连续未落地 | Toast 提示旁路/失效（整个服务周期一次） | 通知仍"运行中"，需按提示排查 |
+
+- 两个"15s"互斥不叠加：注册放弃作用于**未注册**路径，未落地告警作用于**已注册**路径。
+- 健康检查按 `elapsedRealtime` 计时，息屏降频时自动变为每 5 个 tick 一次（仍是真实 5s）。
+- 位置关闭等待期不注册、不检查，仅保活 tick 与等待文案通知。
+
+UI/地图域定时（互不相干）：悬浮球长按 2s（`LONG_PRESS_MS`，进度环 33ms 刷新）、地图页退出延迟销毁 300ms、OSM 中心回报防抖 120ms、百度反地理编码 3s 超时、蓝点定位 5s 一次（`setScanSpan(5000)`，页面离开前台即停）。
+
 ### 2.3 坐标转换（:core:common CoordUtils）
 - 全链路内部一律 WGS84；仅百度显示边界做 WGS84↔BD09LL。
 - 链条：WGS84↔GCJ02↔BD09（`wgs2bd09`/`bd092wgs` 组合封装），纯数学，移植自 Gogogo MapUtils。
