@@ -285,16 +285,18 @@ class MockLocationService : Service() {
         injectOne(LocationManager.NETWORK_PROVIDER, NETWORK_ACCURACY, now, elapsed)
         injectOne(LocationManager.GPS_PROVIDER, GPS_ACCURACY, now, elapsed)
         if (fusedSupported) injectOne(LocationManager.FUSED_PROVIDER, GPS_ACCURACY, now, elapsed)
-        // 5s 周期健康检查（系统位置开启时）：启用态修复 + 注入落地校验——
-        // 开关位置后部分 ROM 把 provider 留在禁用态（不抛异常但无人消费）；
-        // GMS 融合定位/Wi-Fi 扫描旁路则表现为"注入正常但应用仍显示真实位置"
+        // 5s 周期健康检查（系统位置开启时）：只在注入未落地时才介入修复——
+        // 工作正常时做启用态翻转只会制造可用性事件扰动，把好端端的订阅搅断
+        // （表现为"开始几秒正常、几秒后失效"）；修复后复检，仍不落地才计数告警
         val clock = SystemClock.elapsedRealtime()
         if (clock - lastEnableCheckAt >= PROVIDER_ENABLE_CHECK_MS &&
             MockCheck.isLocationEnabled(this)
         ) {
             lastEnableCheckAt = clock
             val tp = TestProviders(lm)
-            if (!tp.reenableIfNeeded()) providersAdded = false
+            if (!tp.injectionLanded(lat, lng)) {
+                if (!tp.reenableIfNeeded()) providersAdded = false
+            }
             if (tp.injectionLanded(lat, lng)) {
                 ineffectiveStrikes = 0
             } else if (++ineffectiveStrikes >= INEFFECTIVE_STRIKES && !ineffectiveShown) {
@@ -507,8 +509,9 @@ internal class TestProviders(
                 lm.setTestProviderEnabled(provider, true)
             } catch (ignore: IllegalArgumentException) {
                 allRegistered = false
-            } catch (ignore: Exception) {
-                // ROM 差异：本轮启用失败，下个校验周期重试
+            } catch (e: Exception) {
+                // ROM 差异：本轮启用失败，下个校验周期重试；留痕供 ROM 拒启排查
+                Log.w(TAG, "re-enable $provider failed", e)
             }
         }
         return allRegistered
