@@ -471,12 +471,28 @@ internal class TestProviders(
             addNetwork()
             enableIfDisabled(LocationManager.GPS_PROVIDER)
             enableIfDisabled(LocationManager.NETWORK_PROVIDER)
+            // 启动时刻的可用性翻转：注册若发生在系统位置已开启时，provider 直接
+            // 报告可用、无人收到状态变化事件——启动前已订阅并休眠的系统定位服务
+            // （GMS 融合引擎等）不会重新订阅，表现为"有时没唤醒"。显式翻转踢醒
+            kickProvider(LocationManager.GPS_PROVIDER)
+            kickProvider(LocationManager.NETWORK_PROVIDER)
             tryRegisterFused()
             registrationComplete = true
             return true
         } finally {
             // 注册未全部完成时回滚，避免 GPS 成功、Network 失败留下替身。
             if (!registrationComplete) removeAll()
+        }
+    }
+
+    /** disable→enable 翻转产生 provider 可用性变化事件，唤醒休眠的定位订阅方 */
+    @Suppress("TooGenericExceptionCaught")
+    private fun kickProvider(provider: String) {
+        try {
+            lm.setTestProviderEnabled(provider, false)
+            lm.setTestProviderEnabled(provider, true)
+        } catch (ignore: Exception) {
+            // 部分 ROM 翻转异常：容忍，enableIfDisabled 已保证启用态
         }
     }
 
