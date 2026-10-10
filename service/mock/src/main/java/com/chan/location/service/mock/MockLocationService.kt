@@ -371,12 +371,13 @@ class MockLocationService : Service() {
         }
     }
 
-    /** 注入落地真值：自身 GPS 订阅近期是否收到 mock 标记的投递。lastKnown 在
-     *  部分 ROM 不更新/被模糊化会误报；投递流是最直接的端到端证据 */
+    /** 注入落地真值：自身 GPS 订阅是否收到带 mock 标记的投递。**只认 mock 标记，
+     *  不比坐标、不看时效**——本应用"精确位置"关闭时，系统对发给我们的定位做
+     *  城市级模糊化（坐标挪到区市质心、精度改写 5000m、刷新稀疏），坐标与时效
+     *  判断在这种模式下全是误报；mock 标记由系统注入源打上，不受模糊化影响，
+     *  为真即证明注入确实在经替身通道投递 */
     private fun injectionLandedNow(): Boolean {
         val fix = lastDelivered ?: return false
-        val stale =
-            SystemClock.elapsedRealtimeNanos() - fix.elapsedRealtimeNanos > DELIVERY_STALE_NS
         val fromMock =
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 fix.isMock
@@ -384,15 +385,10 @@ class MockLocationService : Service() {
                 @Suppress("DEPRECATION")
                 fix.isFromMockProvider
             }
-        val landed = !stale && fromMock
-        if (!landed) {
-            Log.w(
-                TAG,
-                "injection not landing: stale=$stale fromMock=$fromMock " +
-                    "fix=$fix target=($lat, $lng)",
-            )
+        if (!fromMock) {
+            Log.w(TAG, "delivery not from mock: $fix target=($lat, $lng)")
         }
-        return landed
+        return fromMock
     }
 
     /** 注入异常必须全部吞掉：异常外漏会杀死注入线程→进程崩溃，已注册的
@@ -500,9 +496,6 @@ class MockLocationService : Service() {
 
         /** 连续恢复达到该次数仍未落地 → Toast 提示（整个服务周期一次） */
         private const val RECOVERY_TOAST_AFTER = 10
-
-        /** 投递流时效：超过 10s 无投递视为未落地（健康检查周期 5s 的两倍冗余） */
-        private const val DELIVERY_STALE_NS = 10_000_000_000L
 
         /** 注册重试：1s 节奏，连续 15 次（约 15s）失败判定为持续失败 */
         private const val REG_RETRY_INTERVAL_MS = 1_000L
