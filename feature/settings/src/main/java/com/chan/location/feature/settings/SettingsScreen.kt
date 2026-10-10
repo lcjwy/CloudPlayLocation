@@ -1,9 +1,17 @@
 package com.chan.location.feature.settings
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import android.provider.Settings
+import android.widget.Toast
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -13,6 +21,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -33,6 +42,7 @@ import com.chan.location.core.ui.component.OnResumeEffect
 import com.chan.location.core.ui.component.PrivacyPolicyDialog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import java.security.MessageDigest
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -167,3 +177,45 @@ private class SettingsController(
         scope.launch { repo.setPrivacyAgreed(agreed) }
     }
 }
+
+/** 当前签名证书 SHA1（点击复制）：百度控制台给 Key 绑定"发布版安全码"用 */
+@Composable
+internal fun Sha1Row() {
+    val context = LocalContext.current
+    val sha1 = remember { signingSha1Hex(context) } ?: return
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+    Text(
+        text = "签名 SHA1：$sha1（点击复制，控制台绑定用，包名 ${context.packageName}）",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable {
+                    clipboard?.setPrimaryClip(ClipData.newPlainText("sha1", sha1))
+                    Toast.makeText(context, "已复制签名 SHA1", Toast.LENGTH_SHORT).show()
+                }.padding(horizontal = 16.dp, vertical = 4.dp),
+    )
+}
+
+/** 读取当前安装包签名证书的 SHA1 十六进制（冒号分隔大写）；读取失败返回 null。
+ *  供设置页展示，用户在百度控制台给 Key 绑定"发布版安全码"时填写 */
+internal fun signingSha1Hex(context: Context): String? =
+    runCatching {
+        val pm = context.packageManager
+        val signatures =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                pm
+                    .getPackageInfo(context.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+                    .signingInfo
+                    ?.apkContentsSigners
+            } else {
+                @Suppress("DEPRECATION")
+                pm.getPackageInfo(context.packageName, PackageManager.GET_SIGNATURES)?.signatures
+            }
+        val cert = signatures?.firstOrNull() ?: return@runCatching null
+        MessageDigest
+            .getInstance("SHA-1")
+            .digest(cert.toByteArray())
+            .joinToString(":") { "%02X".format(it) }
+    }.getOrNull()
