@@ -39,7 +39,7 @@
 ./gradlew ktlintFormat detekt :core:common:testDebugUnitTest :service:mock:testDebugUnitTest
 ```
 
-- 正式包命名：`云游_版本_年月日_时分秒_release.apk`，输出于项目级 `build/outputs/named/`；调试包不重命名。
+- 正式包命名：`云游_版本_年月日_时分秒_release.apk`，输出于项目级 `build/outputs/app/`；调试包不重命名。
 - **百度 Key**：申请后写入 `local.properties`（已被 gitignore）的 `BAIDU_MAP_KEY`，经 manifestPlaceholders 注入，源码零硬编码；未配置时百度瓦片空白，可切换 OSM 源使用。
 - **签名**：凭据同样存于 `local.properties`（`STORE_FILE/STORE_PASSWORD/KEY_ALIAS/KEY_PASSWORD`），密库文件（*.jks）不入库；缺省时 debug 回退系统默认签名。
 - x86_64 模拟器请切换「开源地图 (OSM)」源（百度 so 仅有 arm64）。

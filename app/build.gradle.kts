@@ -96,7 +96,7 @@ androidComponents {
         val cap = variantName.replaceFirstChar { it.uppercase() }
         val taskName = "copyApk$cap"
         val apkDir = variant.artifacts.get(SingleArtifact.APK)
-        val namedDir = rootProject.layout.buildDirectory.dir("outputs/named")
+        val namedDir = rootProject.layout.buildDirectory.dir("outputs/app")
         tasks.register<Copy>(taskName) {
             group = "build"
             description = "输出带时间戳的下划线命名 APK 副本（交付用，位于项目级 build 目录）"
@@ -121,7 +121,7 @@ tasks.register("release") {
     dependsOn("assembleRelease")
     doLast {
         logger.lifecycle(
-            "正式包输出：build/outputs/named/${appName}_${appVersionName}_<年月日_时分秒>_release.apk",
+            "正式包输出：build/outputs/app/${appName}_${appVersionName}_<年月日_时分秒>_release.apk",
         )
     }
 }
