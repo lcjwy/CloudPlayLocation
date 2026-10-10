@@ -336,14 +336,18 @@ class MockLocationService : Service() {
         if (fusedSupported) injectOne(LocationManager.FUSED_PROVIDER, GPS_ACCURACY, now, elapsed)
         // 5s 周期健康检查（系统位置开启时）：只在注入未落地时才介入修复——
         // 工作正常时做启用态翻转只会制造可用性事件扰动，把好端端的订阅搅断
-        // （表现为"开始几秒正常、几秒后失效"）；修复后复检，仍不落地才计数告警
+        // （表现为"开始几秒正常、几秒后失效"）；两级修复后复检，仍不落地才计数告警
         val clock = SystemClock.elapsedRealtime()
         if (clock - lastEnableCheckAt >= PROVIDER_ENABLE_CHECK_MS &&
             MockCheck.isLocationEnabled(this)
         ) {
             lastEnableCheckAt = clock
-            if (!injectionLandedNow()) {
-                if (!TestProviders(lm).reenableIfNeeded()) providersAdded = false
+            // 两级修复：① 翻转+重启用（复位禁用态、重发可用性事件唤醒订阅方）；
+            // ② 复检仍不落地 → 强制重注册重新压制——ROM 定位引擎重连后会静默
+            // 架空替身（投递真实缓存定位、无 IAE），唯有重注册能夺回投递通道
+            if (!TestProviders(lm).healthCheck { injectionLandedNow() }) {
+                providersAdded = false
+                Log.w(TAG, "health check: force re-register (delivery not from mock)")
             }
             if (injectionLandedNow()) {
                 ineffectiveStrikes = 0
@@ -554,8 +558,7 @@ internal class TestProviders(
             // 启动时刻的可用性翻转：注册若发生在系统位置已开启时，provider 直接
             // 报告可用、无人收到状态变化事件——启动前已订阅并休眠的系统定位服务
             // （GMS 融合引擎等）不会重新订阅，表现为"有时没唤醒"。显式翻转踢醒
-            kickProvider(LocationManager.GPS_PROVIDER)
-            kickProvider(LocationManager.NETWORK_PROVIDER)
+            kick()
             tryRegisterFused()
             registrationComplete = true
             return true
@@ -565,15 +568,31 @@ internal class TestProviders(
         }
     }
 
-    /** disable→enable 翻转产生 provider 可用性变化事件，唤醒休眠的定位订阅方 */
+    /** 双 provider disable→enable 翻转：产生可用性变化事件，复位启用态并唤醒
+     *  休眠的定位订阅方 */
     @Suppress("TooGenericExceptionCaught")
-    private fun kickProvider(provider: String) {
-        try {
-            lm.setTestProviderEnabled(provider, false)
-            lm.setTestProviderEnabled(provider, true)
-        } catch (ignore: Exception) {
-            // 部分 ROM 翻转异常：容忍，enableIfDisabled 已保证启用态
+    fun kick() {
+        for (provider in arrayOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)) {
+            try {
+                lm.setTestProviderEnabled(provider, false)
+                lm.setTestProviderEnabled(provider, true)
+            } catch (ignore: Exception) {
+                // 部分 ROM 翻转异常：容忍，enableIfDisabled 已保证启用态
+            }
         }
+    }
+
+    /** 健康检查 + 两级修复（调用方须保证系统位置已开启）。landing 为注入落地
+     *  真值回调（服务侧投递流校验）。返回 false 表示两级修复后仍未落地——
+     *  投递通道被 ROM 定位引擎架空（投真实缓存定位、mock 注册无 IAE），
+     *  调用方应强制重注册重新压制 */
+    fun healthCheck(landing: () -> Boolean): Boolean {
+        var landed = landing()
+        if (!landed) {
+            kick()
+            if (reenableIfNeeded()) landed = landing()
+        }
+        return landed
     }
 
     /** 校验双 provider 启用态并重新启用（调用方须保证系统位置已开启，否则恒判禁用）。
