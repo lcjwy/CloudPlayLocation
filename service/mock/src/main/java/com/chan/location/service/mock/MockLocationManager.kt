@@ -47,21 +47,37 @@ object MockLocationManager {
         if (::appCtx.isInitialized) return
         appCtx = app
         settings = settingsRepository
-        reconcileOnChange()
         scope.launch {
-            // 进程被杀后前台服务不会复活，进程重启时校正残留的启用状态。
-            // 杀后台（系统回收/一键清理/划卡）即停服是官方可接受的停止路径：
-            // 校正的同时明确提示，避免用户困惑"开关怎么自己关了"
-            if (settings.mockEnabled.first() && !MockLocationService.isAlive) {
+            // 进程级 current 必须先于 reconcile 收集器恢复：初始发射若见到
+            // mockEnabled=true 且 current=null 会走停服分支，误杀随后的恢复启动
+            current = settings.selectedPoint.first()
+            val wasRunning = settings.mockEnabled.first()
+            // 清理被杀进程残留的 TestProvider（先清后恢复，避免误删新服务的注册）：
+            // 进程死亡时 onDestroy 不会执行，残留会持续压制真实定位
+            cleanupResidualProviders()
+            reconcileOnChange()
+            val point = current
+            if (wasRunning && point != null) {
+                // 进程被系统/ROM 回收（常见于夜间省电），前台服务随进程终止：
+                // 用户打开应用即处于前台，直接恢复注入（悬停开关位不动）；
+                // 启动失败由 startServiceSafe 回滚开关并提示
+                val started =
+                    startServiceSafe(
+                        MockLocationService.intent(appCtx, point, settings.intervalMs.first()),
+                    ) {
+                        settings.setMockEnabled(false)
+                    }
+                if (started) {
+                    mainHandler.post {
+                        Toast.makeText(appCtx, R.string.mock_resumed, Toast.LENGTH_LONG).show()
+                    }
+                }
+            } else if (wasRunning) {
                 settings.setMockEnabled(false)
                 mainHandler.post {
                     Toast.makeText(appCtx, R.string.mock_stopped_on_exit, Toast.LENGTH_LONG).show()
                 }
             }
-            // init 时本服务必然未运行：进程被杀/崩溃时 onDestroy 的 removeTestProvider
-            // 不会执行，残留 TestProvider 会持续压制真实定位（表现为"已关闭仍在生效"），
-            // 启动时无条件兜底清理
-            cleanupResidualProviders()
         }
     }
 

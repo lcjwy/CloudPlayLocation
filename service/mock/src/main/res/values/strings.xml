@@ -9,6 +9,7 @@
     <string name="mock_not_effective">虚拟位置可能未生效：请关闭系统「Wi-Fi 扫描/提高定位精确度」，或检查「模拟位置信息应用」选择</string>
     <string name="mock_start_failed">虚拟位置服务启动失败，请重试</string>
     <string name="mock_stopped_on_exit">应用退出后虚拟位置已自动停止，可重新开启</string>
+    <string name="mock_resumed">虚拟位置曾被系统中断，已自动恢复运行</string>
     <string name="float_start_failed">悬浮窗服务启动失败，请重试</string>
     <string name="float_notification_channel">悬浮窗控制</string>
     <string name="float_notification_title">悬浮按钮已开启</string>
