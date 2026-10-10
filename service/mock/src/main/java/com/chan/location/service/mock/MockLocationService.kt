@@ -61,11 +61,14 @@ class MockLocationService : Service() {
     @Volatile
     private var fusedSupported = false
 
-    /** 注入落地校验连续未命中次数/是否已提示（仅注入线程访问，提示整个周期一次） */
-    private var ineffectiveStrikes = 0
-
+    /** 未落地提示是否已发（整个服务周期一次，防刷屏） */
     @Volatile
     private var ineffectiveShown = false
+
+    /** 落地守卫恢复状态：上次恢复动作时刻与连续恢复次数（仅注入线程访问） */
+    private var lastRecoveryAt = 0L
+
+    private var recoveryCount = 0
 
     /** 服务自身 GPS 订阅收到的最近投递（落地校验真值来源） */
     @Volatile
@@ -104,9 +107,6 @@ class MockLocationService : Service() {
 
     /** 通知是否处于"等待系统位置"文案态：仅在翻转时更新，避免每秒刷通知 */
     private var lastNotifiedWaiting = false
-
-    /** 上次 provider 启用态校验时刻（仅注入线程访问） */
-    private var lastEnableCheckAt = 0L
 
     /** 注册重试状态机：1s 节奏，首次失败提示一次，连续约 15s 失败回滚开关并停服 */
     private val regRetry =
@@ -245,6 +245,11 @@ class MockLocationService : Service() {
                     false
                 }
             fusedSupported = providersAdded && tp.fusedRegistered
+            if (providersAdded) {
+                // 注册即给守卫 1s 观察期：新 provider 首次投递需要一点时间，
+                // 避免启动瞬间误触发恢复动作
+                lastRecoveryAt = SystemClock.elapsedRealtime()
+            }
             providersAdded
         }
 
@@ -334,26 +339,26 @@ class MockLocationService : Service() {
         injectOne(LocationManager.NETWORK_PROVIDER, NETWORK_ACCURACY, now, elapsed)
         injectOne(LocationManager.GPS_PROVIDER, GPS_ACCURACY, now, elapsed)
         if (fusedSupported) injectOne(LocationManager.FUSED_PROVIDER, GPS_ACCURACY, now, elapsed)
-        // 5s 周期健康检查（系统位置开启时）：只在注入未落地时才介入修复——
-        // 工作正常时做启用态翻转只会制造可用性事件扰动，把好端端的订阅搅断
-        // （表现为"开始几秒正常、几秒后失效"）；两级修复后复检，仍不落地才计数告警
-        val clock = SystemClock.elapsedRealtime()
-        if (clock - lastEnableCheckAt >= PROVIDER_ENABLE_CHECK_MS &&
-            MockCheck.isLocationEnabled(this)
-        ) {
-            lastEnableCheckAt = clock
-            // 两级修复：① 翻转+重启用（复位禁用态、重发可用性事件唤醒订阅方）；
-            // ② 复检仍不落地 → 强制重注册重新压制——ROM 定位引擎重连后会静默
-            // 架空替身（投递真实缓存定位、无 IAE），唯有重注册能夺回投递通道
-            if (!TestProviders(lm).healthCheck { injectionLandedNow() }) {
-                providersAdded = false
-                Log.w(TAG, "health check: force re-register (delivery not from mock)")
-            }
-            if (injectionLandedNow()) {
-                ineffectiveStrikes = 0
-            } else if (++ineffectiveStrikes >= INEFFECTIVE_STRIKES && !ineffectiveShown) {
-                ineffectiveShown = true
-                Toast.makeText(this, R.string.mock_not_effective, Toast.LENGTH_LONG).show()
+        // 落地守卫：每 tick 只读校验（volatile 比对，零 binder 成本），未落地才按
+        // 节流介入。不设固定周期——周期检查既是失效暴露窗口，批量翻转也会与 ROM
+        // 的架空互相激化。恢复两级：首次 kick（翻转+事件唤醒），持续失败升级重注册
+        if (MockCheck.isLocationEnabled(this) && !injectionLandedNow()) {
+            val now = SystemClock.elapsedRealtime()
+            val throttle =
+                if (recoveryCount <= 1) RECOVERY_THROTTLE_FAST_MS else RECOVERY_THROTTLE_SLOW_MS
+            if (now - lastRecoveryAt >= throttle) {
+                lastRecoveryAt = now
+                recoveryCount++
+                if (recoveryCount == 1) {
+                    TestProviders(lm).kick()
+                } else {
+                    Log.w(TAG, "recovery: force re-register (attempt=$recoveryCount)")
+                    providersAdded = false
+                }
+                if (recoveryCount == RECOVERY_TOAST_AFTER && !ineffectiveShown) {
+                    ineffectiveShown = true
+                    Toast.makeText(this, R.string.mock_not_effective, Toast.LENGTH_LONG).show()
+                }
             }
         }
         if (lat == lastNotifiedLat && lng == lastNotifiedLng) return
@@ -488,11 +493,13 @@ class MockLocationService : Service() {
         private const val SATELLITES = 7
         private const val SCREEN_OFF_MIN_INTERVAL_MS = 1000L
 
-        /** provider 启用态校验周期：5s 一次足够，避免每 tick 都做 binder 调用 */
-        private const val PROVIDER_ENABLE_CHECK_MS = 5_000L
+        /** 落地守卫恢复节流：前两次快速介入（1s），持续失败退避到 5s——
+         *  防恢复动作与 ROM 的架空互相激化 */
+        private const val RECOVERY_THROTTLE_FAST_MS = 1_000L
+        private const val RECOVERY_THROTTLE_SLOW_MS = 5_000L
 
-        /** 注入落地连续未命中阈值：3 次（约 15s）判定被旁路，提示一次 */
-        private const val INEFFECTIVE_STRIKES = 3
+        /** 连续恢复达到该次数仍未落地 → Toast 提示（整个服务周期一次） */
+        private const val RECOVERY_TOAST_AFTER = 10
 
         /** 投递流时效：超过 10s 无投递视为未落地（健康检查周期 5s 的两倍冗余） */
         private const val DELIVERY_STALE_NS = 10_000_000_000L
@@ -580,19 +587,6 @@ internal class TestProviders(
                 // 部分 ROM 翻转异常：容忍，enableIfDisabled 已保证启用态
             }
         }
-    }
-
-    /** 健康检查 + 两级修复（调用方须保证系统位置已开启）。landing 为注入落地
-     *  真值回调（服务侧投递流校验）。返回 false 表示两级修复后仍未落地——
-     *  投递通道被 ROM 定位引擎架空（投真实缓存定位、mock 注册无 IAE），
-     *  调用方应强制重注册重新压制 */
-    fun healthCheck(landing: () -> Boolean): Boolean {
-        var landed = landing()
-        if (!landed) {
-            kick()
-            if (reenableIfNeeded()) landed = landing()
-        }
-        return landed
     }
 
     /** 校验双 provider 启用态并重新启用（调用方须保证系统位置已开启，否则恒判禁用）。
