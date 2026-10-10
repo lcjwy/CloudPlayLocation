@@ -93,7 +93,7 @@ FOREGROUND_SERVICE_LOCATION / FOREGROUND_SERVICE_SPECIAL_USE / SYSTEM_ALERT_WIND
 ### 3.5 虚拟位置服务（前台）
 - `MockLocationService`：前台服务，`foregroundServiceType="location"`。
   - 注册 GPS + Network 双 TestProvider：API 31+ 用 `ProviderProperties`（GPS: POWER_USAGE_HIGH/ACCURACY_FINE；Network: POWER_USAGE_LOW/ACCURACY_COARSE），API 26–30 用 `Criteria` 重载。注册后对双 provider 显式 **disable→enable 翻转**：系统位置已开启时注册不会产生可用性变化事件，启动前已订阅并休眠的系统定位服务不会重新订阅（"有时没唤醒"），翻转踢醒。GMS 设备额外尽力注册 fused provider（很多 App 走 `FusedLocationProviderClient`，只替身 GPS/Network 拦不住它——"部分应用仍显示真实位置"的根因）；fused 仅 API 31+ 且注册失败可容忍（无 GMS 的国产 ROM 无此 provider），不参与注册成败判定。
-  - **注入落地自检**：每 5s（系统位置开启时）比对 GPS lastKnown 与目标坐标——连续约 15s 不一致说明注入被旁路（融合定位优先/Wi-Fi 扫描回填真实定位）或 provider 失效，Toast 提示关闭「Wi-Fi 扫描/提高定位精确度」并写日志，不再静默"运行中却不生效"。
+  - **注入落地自检**：服务自身常驻订阅 GPS 投递流（兼防 ROM 对无消费者 provider 休眠停摆），每 5s（系统位置开启时）校验收到的投递是否带 mock 标记且新鲜（10s 内）——连续约 15s 未落地说明注入被旁路或 provider 失效，Toast 提示关闭「Wi-Fi 扫描/提高定位精确度」并写日志，不再静默"运行中却不生效"。
   - HandlerThread 循环按**设置频率（10–100ms，默认 100ms）**依次调用 `setTestProviderLocation`（GPS 与 Network 各一次）。
   - **耗电优化**：息屏后注入间隔钳制到 ≥1s（亮屏立即恢复设定值）；百度蓝点定位 5s 一次且地图页离开前台即停止，避免后台持续 GPS/WiFi 扫描。
   - Location 字段：accuracy、altitude（默认 55.0）、bearing、speed、`System.currentTimeMillis()`、`elapsedRealtimeNanos()`、extras（`satellites=7`）。

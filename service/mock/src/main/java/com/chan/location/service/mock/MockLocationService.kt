@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.location.Location
+import android.location.LocationListener
 import android.location.LocationManager
 import android.location.provider.ProviderProperties
 import android.os.Build
@@ -26,7 +27,6 @@ import androidx.core.content.ContextCompat
 import com.chan.location.core.common.MockCheck
 import com.chan.location.core.data.model.SelectedPoint
 import java.util.Locale
-import kotlin.math.abs
 
 /**
  * 虚拟位置前台服务：注册 GPS/Network 双 TestProvider，按设置频率循环注入 WGS84 坐标。
@@ -66,6 +66,38 @@ class MockLocationService : Service() {
 
     @Volatile
     private var ineffectiveShown = false
+
+    /** 服务自身 GPS 订阅收到的最近投递（落地校验真值来源） */
+    @Volatile
+    private var lastDelivered: Location? = null
+
+    @Volatile
+    private var verifyListening = false
+
+    /** 全量覆写四个回调：API 26–29 的 LocationListener 其余方法非 default，
+     *  SAM 只实现 onLocationChanged 会在老设备上 AbstractMethodError */
+    private val deliveryListener =
+        object : LocationListener {
+            override fun onLocationChanged(location: Location) {
+                lastDelivered = location
+            }
+
+            @Deprecated("Deprecated in Java")
+            override fun onStatusChanged(
+                provider: String?,
+                status: Int,
+                extras: Bundle?,
+            ) {
+            }
+
+            @Deprecated("Deprecated in Java")
+            override fun onProviderEnabled(provider: String) {
+            }
+
+            @Deprecated("Deprecated in Java")
+            override fun onProviderDisabled(provider: String) {
+            }
+        }
 
     private var lastNotifiedLat = Double.NaN
     private var lastNotifiedLng = Double.NaN
@@ -140,7 +172,17 @@ class MockLocationService : Service() {
         flags: Int,
         startId: Int,
     ): Int {
-        readIntent(intent)
+        // intent 必带完整字段（见 intent()）；START_NOT_STICKY 空重启时 intent 为
+        // null，沿用旧值即可——hasTarget 标记保证无目标不空转
+        intent?.let {
+            hasTarget = it.getBooleanExtra(EXTRA_HAS_TARGET, hasTarget)
+            lat = it.getDoubleExtra(EXTRA_LAT, lat)
+            lng = it.getDoubleExtra(EXTRA_LNG, lng)
+            intervalMs =
+                it
+                    .getIntExtra(EXTRA_INTERVAL, intervalMs)
+                    .coerceIn(MIN_INTERVAL_MS, MAX_INTERVAL_MS)
+        }
         // 不能用坐标非零判断目标存在：(0,0) 是合法可输入坐标（几内亚湾）
         if (hasTarget) {
             if (startForegroundSafely()) {
@@ -159,18 +201,6 @@ class MockLocationService : Service() {
             stopSelf()
         }
         return START_NOT_STICKY
-    }
-
-    private fun readIntent(intent: Intent?) {
-        intent?.let {
-            hasTarget = it.getBooleanExtra(EXTRA_HAS_TARGET, hasTarget)
-            lat = it.getDoubleExtra(EXTRA_LAT, lat)
-            lng = it.getDoubleExtra(EXTRA_LNG, lng)
-            intervalMs =
-                it
-                    .getIntExtra(EXTRA_INTERVAL, intervalMs)
-                    .coerceIn(MIN_INTERVAL_MS, MAX_INTERVAL_MS)
-        }
     }
 
     /** FGS 启动受系统/厂商限制，异常类型多，统一按启动失败处理 */
@@ -218,6 +248,7 @@ class MockLocationService : Service() {
             providersAdded
         }
 
+    @Suppress("TooGenericExceptionCaught")
     private fun scheduleLoop() {
         // 线程可能已被历史异常杀死：looper 未 quit 时 post 仍返回成功入队，
         // 但永远无人消费（服务存活、开关显示运行中，却永不注入，直到进程重启）。
@@ -231,6 +262,24 @@ class MockLocationService : Service() {
             thread.start()
             handlerThread = thread
             handler = Handler(thread.looper)
+        }
+        // 服务自身常驻订阅 GPS 投递流：① 落地校验的真值来源（lastKnown 在部分
+        // ROM 不可靠）；② 很多 ROM 会对"无活跃消费者"的 provider 休眠停摆——
+        // 常驻订阅保证替身 provider 永远有消费者，不被熄火
+        if (!verifyListening && handler != null) {
+            try {
+                lm.requestLocationUpdates(
+                    LocationManager.GPS_PROVIDER,
+                    0L,
+                    0f,
+                    deliveryListener,
+                    handler!!.looper,
+                )
+                verifyListening = true
+            } catch (e: Exception) {
+                // ROM 差异：注册订阅失败不致命，落地校验退化为 null→走修复路径
+                Log.w(TAG, "verify listener register failed", e)
+            }
         }
         handler?.removeCallbacks(tick)
         handler?.post(tick)
@@ -293,15 +342,13 @@ class MockLocationService : Service() {
             MockCheck.isLocationEnabled(this)
         ) {
             lastEnableCheckAt = clock
-            val tp = TestProviders(lm)
-            if (!tp.injectionLanded(lat, lng)) {
-                if (!tp.reenableIfNeeded()) providersAdded = false
+            if (!injectionLandedNow()) {
+                if (!TestProviders(lm).reenableIfNeeded()) providersAdded = false
             }
-            if (tp.injectionLanded(lat, lng)) {
+            if (injectionLandedNow()) {
                 ineffectiveStrikes = 0
             } else if (++ineffectiveStrikes >= INEFFECTIVE_STRIKES && !ineffectiveShown) {
                 ineffectiveShown = true
-                Log.w(TAG, "injection not landing: target=($lat, $lng)")
                 Toast.makeText(this, R.string.mock_not_effective, Toast.LENGTH_LONG).show()
             }
         }
@@ -313,6 +360,30 @@ class MockLocationService : Service() {
         } catch (ignore: SecurityException) {
             // 无通知权限时静默
         }
+    }
+
+    /** 注入落地真值：自身 GPS 订阅近期是否收到 mock 标记的投递。lastKnown 在
+     *  部分 ROM 不更新/被模糊化会误报；投递流是最直接的端到端证据 */
+    private fun injectionLandedNow(): Boolean {
+        val fix = lastDelivered ?: return false
+        val stale =
+            SystemClock.elapsedRealtimeNanos() - fix.elapsedRealtimeNanos > DELIVERY_STALE_NS
+        val fromMock =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                fix.isMock
+            } else {
+                @Suppress("DEPRECATION")
+                fix.isFromMockProvider
+            }
+        val landed = !stale && fromMock
+        if (!landed) {
+            Log.w(
+                TAG,
+                "injection not landing: stale=$stale fromMock=$fromMock " +
+                    "fix=$fix target=($lat, $lng)",
+            )
+        }
+        return landed
     }
 
     /** 注入异常必须全部吞掉：异常外漏会杀死注入线程→进程崩溃，已注册的
@@ -378,6 +449,10 @@ class MockLocationService : Service() {
     override fun onDestroy() {
         isAlive = false
         unregisterReceiver(screenStateReceiver)
+        if (verifyListening) {
+            runCatching { lm.removeUpdates(deliveryListener) }
+            verifyListening = false
+        }
         handler?.removeCallbacks(tick)
         handlerThread?.quitSafely()
         handlerThread = null
@@ -414,6 +489,9 @@ class MockLocationService : Service() {
 
         /** 注入落地连续未命中阈值：3 次（约 15s）判定被旁路，提示一次 */
         private const val INEFFECTIVE_STRIKES = 3
+
+        /** 投递流时效：超过 10s 无投递视为未落地（健康检查周期 5s 的两倍冗余） */
+        private const val DELIVERY_STALE_NS = 10_000_000_000L
 
         /** 注册重试：1s 节奏，连续 15 次（约 15s）失败判定为持续失败 */
         private const val REG_RETRY_INTERVAL_MS = 1_000L
@@ -515,38 +593,6 @@ internal class TestProviders(
             }
         }
         return allRegistered
-    }
-
-    /** 注入落地校验：GPS lastKnown 带系统 mock 标记、或坐标与目标一致（±约 10m）
-     *  视为生效。优先看 mock 标记——本应用"精确位置"关闭时系统对读取的坐标做
-     *  公里级加噪，坐标比对必然失败造成误报；mock 标记不受加噪影响，且能同时
-     *  识别"读到的是真实定位"（被旁路）与"读到的是替身"（注入正常） */
-    fun injectionLanded(
-        lat: Double,
-        lng: Double,
-    ): Boolean {
-        val fix = runCatching { lm.getLastKnownLocation(LocationManager.GPS_PROVIDER) }.getOrNull()
-        if (fix == null) return false
-        val fromMock =
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                fix.isMock
-            } else {
-                @Suppress("DEPRECATION")
-                fix.isFromMockProvider
-            }
-        val matched = abs(fix.latitude - lat) < 1e-4 && abs(fix.longitude - lng) < 1e-4
-        if (!fromMock || !matched) {
-            Log.w(
-                TAG,
-                "injection check: fromMock=$fromMock matched=$matched fix=$fix " +
-                    "gps=${runCatching {
-                        lm.isProviderEnabled(
-                            LocationManager.GPS_PROVIDER,
-                        )
-                    }.getOrDefault(false)}",
-            )
-        }
-        return fromMock || matched
     }
 
     /** 废弃的 10 参重载 + 常量（Gogogo 同款，含 API 31+）：Builder 新重载在部分 ROM 行为不一致 */
